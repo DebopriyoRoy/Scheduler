@@ -101,3 +101,32 @@ def test_client_blocks_production_draft_creation_before_request():
             end_at="2026-09-10T23:00:00-02:30",
         )
     assert session.calls == []
+
+
+def test_sandbox_draft_creation_uses_draft_only_endpoint(sandbox_config):
+    session = FakeSession(
+        [
+            FakeResponse(
+                {
+                    "scheduled_shift": {
+                        "id": "SHIFT1",
+                        "draft_shift_details": {"team_member_id": "T1"},
+                    }
+                }
+            )
+        ]
+    )
+    shift = SquareClient(sandbox_config, session=session).create_draft_shift(
+        idempotency_key="deterministic-key",
+        team_member_id="T1",
+        job_id="J1",
+        location_id="L1",
+        start_at="2026-09-10T17:00:00-02:30",
+        end_at="2026-09-10T23:00:00-02:30",
+    )
+    call = session.calls[0]
+    assert shift["id"] == "SHIFT1"
+    assert call["url"].endswith("/v2/labor/scheduled-shifts")
+    assert "/publish" not in call["url"]
+    assert call["json"]["scheduled_shift"]["draft_shift_details"]["job_id"] == "J1"
+    assert "published_shift_details" not in call["json"]["scheduled_shift"]
