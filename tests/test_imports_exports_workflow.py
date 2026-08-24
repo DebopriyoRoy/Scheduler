@@ -242,6 +242,54 @@ def test_schedule_generation_page_requires_explicit_shortage_choice(
 
 
 @pytest.mark.django_db
+def test_complete_browser_workflow_generates_overrides_and_approves(
+    client,
+    management_user,
+    staff_and_config,
+):
+    show = Show.objects.create(
+        title="Browser Workflow Show",
+        date=date(2026, 9, 12),
+        expected_guests=100,
+        requires_50_50=True,
+    )
+    for employee in staff_and_config:
+        EmployeeAvailability.objects.create(
+            employee=employee,
+            date=show.date,
+            availability_type=AvailabilityType.AVAILABLE_ALL_DAY,
+        )
+    client.force_login(management_user)
+    response = client.post(
+        "/schedules/generate/",
+        {"start_date": "2026-09-07", "end_date": "2026-10-03"},
+    )
+    assert response.status_code == 302
+    schedule_run = show.schedule_assignments.first().schedule_run
+    assert schedule_run.status == ScheduleRunStatus.GENERATED
+    detail = client.get(response["Location"])
+    assert detail.status_code == 200
+    assert b"Browser Workflow Show" in detail.content
+    assignment = schedule_run.assignments.get(shift_template__code="lead-server")
+    replacement = next(
+        employee
+        for employee in Employee.objects.filter(employee_roles__role__name="Server")
+        if not schedule_run.assignments.filter(show=show, employee=employee).exists()
+    )
+    override_response = client.post(
+        f"/schedules/assignments/{assignment.pk}/override/",
+        {"employee": replacement.pk, "override_reason": "Browser workflow validation"},
+    )
+    assert override_response.status_code == 302
+    assignment.refresh_from_db()
+    assert assignment.manually_overridden is True
+    approval_response = client.post(f"/schedules/{schedule_run.pk}/approve/")
+    assert approval_response.status_code == 302
+    schedule_run.refresh_from_db()
+    assert schedule_run.status == ScheduleRunStatus.APPROVED
+
+
+@pytest.mark.django_db
 @override_settings(DEBUG=True)
 def test_demo_seed_is_idempotent_and_clearly_isolated():
     call_command("seed_schedule_demo", verbosity=0)
