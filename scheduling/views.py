@@ -8,14 +8,34 @@ from integrations.square.exceptions import SquareIntegrationError
 from .models import Employee, Role
 
 
+def square_connection_context() -> dict[str, object]:
+    context: dict[str, object] = {
+        "connection_status": "Not Connected",
+        "environment": "Not configured",
+        "locations": [],
+        "error_message": "",
+    }
+    try:
+        config = SquareConfig.from_env()
+        context["environment"] = config.environment.value.title()
+        if config.environment is SquareEnvironment.SANDBOX and config.token_is_configured:
+            context["locations"] = SquareClient(config).test_connection()
+            context["connection_status"] = "Connected to Sandbox"
+    except SquareIntegrationError as exc:
+        context["error_message"] = str(exc)
+    return context
+
+
 @login_required
 def dashboard(request):
+    square_context = square_connection_context()
     return render(
         request,
         "scheduling/dashboard.html",
         {
             "employee_count": Employee.objects.filter(active=True).count(),
             "role_count": Role.objects.count(),
+            "square_connection_status": square_context["connection_status"],
         },
     )
 
@@ -39,25 +59,4 @@ def roles(request):
 
 @login_required
 def square_integration(request):
-    connection_status = "Not Connected"
-    locations = []
-    error_message = ""
-    environment = "Not configured"
-    try:
-        config = SquareConfig.from_env()
-        environment = config.environment.value.title()
-        if config.environment is SquareEnvironment.SANDBOX and config.token_is_configured:
-            locations = SquareClient(config).test_connection()
-            connection_status = "Connected to Sandbox"
-    except SquareIntegrationError as exc:
-        error_message = str(exc)
-    return render(
-        request,
-        "scheduling/square_integration.html",
-        {
-            "connection_status": connection_status,
-            "environment": environment,
-            "locations": locations,
-            "error_message": error_message,
-        },
-    )
+    return render(request, "scheduling/square_integration.html", square_connection_context())

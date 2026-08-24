@@ -8,7 +8,7 @@
 <div class="row g-4">
   <div class="col-md-4">
     <a class="card dashboard-card h-100 text-decoration-none" href="{% url 'square_integration' %}">
-      <div class="card-body"><h2 class="h5">Square Connection</h2><p class="text-secondary mb-0">Sandbox integration status and locations.</p></div>
+      <div class="card-body"><h2 class="h5">Square Connection</h2><p class="mb-2"><span class="status-dot {% if square_connection_status == 'Connected to Sandbox' %}status-connected{% endif %}"></span>{{ square_connection_status }}</p><p class="text-secondary mb-0">Sandbox integration status and locations.</p></div>
     </a>
   </div>
   <div class="col-md-4">
