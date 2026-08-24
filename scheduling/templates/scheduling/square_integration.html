@@ -2,6 +2,6 @@
 {% block title %}Square Integration | Spirit Scheduling Engine{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h2 mb-0">Square Connection</h1><a href="{% url 'dashboard' %}">Dashboard</a></div>
-<div class="card border-0 shadow-sm"><div class="card-body"><p class="text-uppercase text-secondary small fw-semibold mb-2">Environment</p><p class="h4">Sandbox</p><p class="mb-0"><span class="status-dot {% if connection_status == 'Connected to Sandbox' %}status-connected{% endif %}"></span>{{ connection_status }}</p></div></div>
+<div class="card border-0 shadow-sm mb-4"><div class="card-body"><p class="text-uppercase text-secondary small fw-semibold mb-2">Environment</p><p class="h4">{{ environment }}</p><p class="mb-0"><span class="status-dot {% if connection_status == 'Connected to Sandbox' %}status-connected{% endif %}"></span>{{ connection_status }}</p>{% if error_message %}<p class="text-danger small mt-3 mb-0">{{ error_message }}</p>{% endif %}</div></div>
+<div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Sandbox locations</h2>{% if locations %}<div class="table-responsive"><table class="table mb-0"><thead><tr><th>Name</th><th>Location ID</th><th>Status</th></tr></thead><tbody>{% for location in locations %}<tr><td>{{ location.name|default:"Unnamed" }}</td><td><code>{{ location.id }}</code></td><td>{{ location.status|default:"Unknown" }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="text-secondary mb-0">No locations loaded. Configure a Sandbox access token to test the connection.</p>{% endif %}</div></div>
 {% endblock %}
-
