@@ -33,4 +33,3 @@ def test_square_page_is_safe_without_token(client, monkeypatch):
     assert response.status_code == 200
     assert b"Not Connected" in response.content
     assert b"No locations loaded" in response.content
-

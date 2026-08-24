@@ -3,7 +3,7 @@
 <div class="mb-4">
   <p class="text-uppercase text-primary fw-semibold small mb-1">Management</p>
   <h1 class="display-6 fw-semibold">Spirit Scheduling Engine</h1>
-  <p class="text-secondary">Phase 1 foundation and Square Sandbox connectivity.</p>
+  <p class="text-secondary">Generate, review, approve, and export explainable staffing recommendations.</p>
 </div>
 <div class="row g-4">
   <div class="col-md-4">
@@ -21,8 +21,20 @@
       <div class="card-body"><h2 class="h5">Roles</h2><p class="text-secondary mb-0">{{ role_count }} roles with capability levels.</p></div>
     </a>
   </div>
-  <div class="col-12">
-    <div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Future Schedule</h2><p class="text-secondary mb-0">Scheduling recommendations will be introduced in a later approved phase.</p></div></div>
+  <div class="col-md-4">
+    <a class="card dashboard-card h-100 text-decoration-none" href="{% url 'show_list' %}">
+      <div class="card-body"><h2 class="h5">Shows</h2><p class="text-secondary mb-0">{{ show_count }} active shows. Import or maintain dates and guest counts.</p></div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a class="card dashboard-card h-100 text-decoration-none" href="{% url 'availability' %}">
+      <div class="card-body"><h2 class="h5">Availability</h2><p class="text-secondary mb-0">Enter by date or use the validated CSV workflow.</p></div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a class="card dashboard-card h-100 text-decoration-none" href="{% url 'schedule_list' %}">
+      <div class="card-body"><h2 class="h5">Schedules</h2><p class="text-secondary mb-0">{{ schedule_count }} local runs. Generate a deterministic draft.</p></div>
+    </a>
   </div>
 </div>
 {% endblock %}

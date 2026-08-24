@@ -23,4 +23,3 @@ class Command(BaseCommand):
         self.stdout.write(f"Active team members: {len(team_members)}")
         self.stdout.write(f"Jobs: {len(jobs)}")
         self.stdout.write("Writes performed: 0")
-

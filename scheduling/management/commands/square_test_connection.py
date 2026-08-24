@@ -26,4 +26,3 @@ class Command(BaseCommand):
                 f"{location.get('id', '(missing ID)')} | "
                 f"{location.get('status', 'UNKNOWN')}"
             )
-

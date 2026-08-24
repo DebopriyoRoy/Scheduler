@@ -23,4 +23,3 @@ class Command(BaseCommand):
                 f"{member.get('id', '(missing ID)')} | {member.get('status', 'UNKNOWN')}"
             )
         self.stdout.write(self.style.SUCCESS(f"Active Sandbox team members: {len(members)}"))
-

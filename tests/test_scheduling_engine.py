@@ -12,6 +12,7 @@ from scheduling.models import (
     EmployeeRole,
     FiftyFiftyRotationConfig,
     OfficeAssignment,
+    OfficeRotationConfig,
     Role,
     ScheduleRunStatus,
     Show,
@@ -233,3 +234,64 @@ def test_manual_assignment_model_rejects_on_call_paid_hours(configured_staff):
     assignment.scheduled_paid_hours = 1
     with pytest.raises(ValidationError):
         assignment.full_clean()
+
+
+@pytest.mark.django_db
+def test_lower_recent_hours_win_confirmed_work_before_on_call(configured_staff):
+    show = make_show(requires_50_50=False)
+    make_all_available(configured_staff, show.date)
+    Employee.objects.filter(employee_roles__role__name="Server").update(opening_recent_hours=100)
+    molly = Employee.objects.get(display_name="Molly Rittwage")
+    molly.opening_recent_hours = 0
+    molly.save(update_fields=["opening_recent_hours"])
+    run = SchedulingEngine().generate(show.date, show.date)
+    assignment = run.assignments.get(employee=molly)
+    assert assignment.assignment_type == AssignmentType.CONFIRMED
+
+
+@pytest.mark.django_db
+def test_on_call_burden_is_distributed_deterministically(configured_staff):
+    dates = [date(2026, 9, 12), date(2026, 9, 18), date(2026, 9, 19), date(2026, 9, 25)]
+    for show_date in dates:
+        make_show(show_date, requires_50_50=False)
+    make_all_available(configured_staff, *dates)
+    run = SchedulingEngine().generate(dates[0], dates[-1])
+    counts = {}
+    for name in run.assignments.filter(assignment_type=AssignmentType.ON_CALL).values_list(
+        "employee__display_name", flat=True
+    ):
+        counts[name] = counts.get(name, 0) + 1
+    assert max(counts.values()) <= 1
+
+
+@pytest.mark.django_db
+def test_weekend_office_rotation_alternates(configured_staff):
+    yana = Employee.objects.get(display_name="Yana")
+    OfficeRotationConfig.objects.create(
+        seed_date=date(2026, 9, 12),
+        seed_saturday_employee=yana,
+    )
+    dates = [date(2026, 9, 12), date(2026, 9, 13), date(2026, 9, 19), date(2026, 9, 20)]
+    for show_date in dates:
+        make_show(show_date, requires_50_50=False)
+    make_all_available(configured_staff, *dates)
+    SchedulingEngine().generate(dates[0], dates[-1])
+    assignments = list(
+        OfficeAssignment.objects.order_by("date").values_list("employee__display_name", flat=True)
+    )
+    assert assignments == ["Yana", "Khrystyna", "Khrystyna", "Yana"]
+
+
+@pytest.mark.django_db
+def test_office_warning_only_when_shift_times_overlap(configured_staff):
+    show = make_show(requires_50_50=False)
+    make_all_available(configured_staff, show.date)
+    yana = Employee.objects.get(display_name="Yana")
+    OfficeAssignment.objects.create(
+        employee=yana,
+        date=show.date,
+        start_time=time(9),
+        end_time=time(15),
+    )
+    run = SchedulingEngine().generate(show.date, show.date)
+    assert not run.warnings.filter(warning_type=WarningType.OFFICE_CONFLICT).exists()

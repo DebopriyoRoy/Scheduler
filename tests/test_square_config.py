@@ -55,4 +55,3 @@ def test_production_writes_are_always_blocked():
     )
     with pytest.raises(SquareProductionWriteBlocked, match="disabled"):
         config.assert_write_allowed()
-

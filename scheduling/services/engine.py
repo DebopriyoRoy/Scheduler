@@ -11,6 +11,7 @@ from scheduling.models import (
     AvailabilityType,
     Employee,
     EmployeeAvailability,
+    OfficeAssignment,
     ScheduleAssignment,
     ScheduleRun,
     ScheduleRunStatus,
@@ -434,6 +435,23 @@ class SchedulingEngine:
                 f"Unknown availability for {len(unknown_names)} employee(s): "
                 + ", ".join(sorted(unknown_names)),
             )
+        templates = list(ShiftTemplate.objects.filter(active=True))
+        for office in OfficeAssignment.objects.filter(date=show.date).select_related("employee"):
+            overlapping = [
+                template.name
+                for template in templates
+                if office.start_time < template.end_time and office.end_time > template.start_time
+            ]
+            if overlapping:
+                self._warning(
+                    schedule_run,
+                    show,
+                    WarningType.OFFICE_CONFLICT,
+                    WarningSeverity.INFO,
+                    f"{office.employee.display_name}'s office assignment overlaps: "
+                    + ", ".join(overlapping)
+                    + ". The employee remains ineligible only for those overlapping times.",
+                )
 
     @staticmethod
     def _warning(schedule_run, show, warning_type, severity, message) -> SchedulingWarning:

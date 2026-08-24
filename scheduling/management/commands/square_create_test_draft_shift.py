@@ -64,4 +64,3 @@ class Command(BaseCommand):
         self.stdout.write(f"Start: {details.get('start_at', request.start_at)}")
         self.stdout.write(f"End: {details.get('end_at', request.end_at)}")
         self.stdout.write("Publication: NOT PUBLISHED")
-

@@ -28,4 +28,3 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"Missing expected jobs: {', '.join(missing)}"))
         else:
             self.stdout.write(self.style.SUCCESS("All expected Spirit jobs were found."))
-

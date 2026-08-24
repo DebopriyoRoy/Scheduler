@@ -22,4 +22,3 @@ class FakeSession:
         if not self.responses:
             raise AssertionError("No fake response remains for this request")
         return self.responses.pop(0)
-

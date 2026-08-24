@@ -8,4 +8,14 @@
 .dashboard-card:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .12); }
 .status-dot { display: inline-block; width: .65rem; height: .65rem; margin-right: .5rem; border-radius: 50%; background: #6c757d; }
 .status-connected { background: #198754; }
-
+.table-schedule { font-size: .84rem; min-width: 1450px; }
+.assignment-card { min-width: 8rem; }
+.assignment-confirmed { border-left: .3rem solid #198754; }
+.assignment-on-call { border-left: .3rem solid #f0ad4e; }
+.assignment-override { border-left: .3rem double #6f42c1; }
+.assignment-shortage { border-left: .3rem solid #dc3545; }
+.priority-row > * { background: #fff8dc !important; }
+.form-help { color: #6c757d; font-size: .875rem; }
+form p label { display: block; margin-bottom: .25rem; font-weight: 600; }
+form p input:not([type=checkbox]), form p select, form p textarea { width: 100%; padding: .375rem .75rem; border: 1px solid #ced4da; border-radius: .375rem; }
+.errorlist { color: #b02a37; margin-bottom: .5rem; }

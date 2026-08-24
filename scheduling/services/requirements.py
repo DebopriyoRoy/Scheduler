@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from django.db.models import Q
+
 from scheduling.models import AssignmentType, ShiftTemplate, Show, StaffingRule
 
 
@@ -17,22 +19,28 @@ def staffing_requirements_for(show: Show) -> tuple[list[StaffingRequirement], bo
             active=True,
             minimum_guests__lte=guest_count,
             maximum_guests__gte=guest_count,
-        ).select_related("role")
+        )
+        .filter(Q(effective_from__isnull=True) | Q(effective_from__lte=show.date))
+        .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=show.date))
+        .select_related("role")
     )
     outside_rules = False
     if not rules:
         outside_rules = True
         maximum = (
             StaffingRule.objects.filter(active=True)
+            .filter(Q(effective_from__isnull=True) | Q(effective_from__lte=show.date))
+            .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=show.date))
             .order_by("-maximum_guests")
             .values_list("maximum_guests", flat=True)
             .first()
         )
         if maximum is not None:
             rules = list(
-                StaffingRule.objects.filter(active=True, maximum_guests=maximum).select_related(
-                    "role"
-                )
+                StaffingRule.objects.filter(active=True, maximum_guests=maximum)
+                .filter(Q(effective_from__isnull=True) | Q(effective_from__lte=show.date))
+                .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=show.date))
+                .select_related("role")
             )
     requirements = [
         StaffingRequirement(rule.role.name, rule.confirmed_count, rule.on_call_count)
