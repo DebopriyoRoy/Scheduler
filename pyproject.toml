@@ -1,0 +1,14 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "spirit_scheduler.settings"
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-ra"
+norecursedirs = [".git", ".venv", "work", "outputs"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["scheduling/migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "DJ", "UP"]
+ignore = ["DJ001"]

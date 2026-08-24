@@ -1,0 +1,11 @@
+:root {
+  --spirit-navy: #173b63;
+  --spirit-blue: #2f78b8;
+}
+
+.spirit-nav { background: var(--spirit-navy); }
+.dashboard-card { border: 0; color: inherit; box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .08); transition: transform .15s ease, box-shadow .15s ease; }
+.dashboard-card:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .12); }
+.status-dot { display: inline-block; width: .65rem; height: .65rem; margin-right: .5rem; border-radius: 50%; background: #6c757d; }
+.status-connected { background: #198754; }
+

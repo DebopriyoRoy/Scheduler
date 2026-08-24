@@ -1,0 +1,8 @@
+Django>=5.2,<6.1
+psycopg[binary]>=3.2,<4
+python-dotenv>=1.1,<2
+requests>=2.32,<3
+pytest>=8.4,<10
+pytest-django>=4.11,<5
+ruff>=0.12,<1
+

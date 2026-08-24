@@ -1,0 +1,7 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Employees | Spirit Scheduling Engine{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h2 mb-0">Employees</h1><a href="{% url 'dashboard' %}">Dashboard</a></div>
+<div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Name</th><th>Roles</th><th>Square mapping</th><th>Status</th></tr></thead><tbody>{% for employee in employees %}<tr><td>{{ employee.display_name }}</td><td>{% for item in employee.employee_roles.all %}<span class="badge text-bg-light border">{{ item.role.name }} L{{ item.capability_level }}</span>{% empty %}<span class="text-secondary">No roles</span>{% endfor %}</td><td>{% if employee.square_team_member_id %}<code>Mapped</code>{% else %}<span class="text-secondary">Not mapped</span>{% endif %}</td><td>{% if employee.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="text-center text-secondary py-5">No employees have been seeded.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}
+

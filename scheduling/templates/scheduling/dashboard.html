@@ -1,0 +1,29 @@
+{% extends "scheduling/base.html" %}
+{% block content %}
+<div class="mb-4">
+  <p class="text-uppercase text-primary fw-semibold small mb-1">Management</p>
+  <h1 class="display-6 fw-semibold">Spirit Scheduling Engine</h1>
+  <p class="text-secondary">Phase 1 foundation and Square Sandbox connectivity.</p>
+</div>
+<div class="row g-4">
+  <div class="col-md-4">
+    <a class="card dashboard-card h-100 text-decoration-none" href="{% url 'square_integration' %}">
+      <div class="card-body"><h2 class="h5">Square Connection</h2><p class="text-secondary mb-0">Sandbox integration status and locations.</p></div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a class="card dashboard-card h-100 text-decoration-none" href="{% url 'employees' %}">
+      <div class="card-body"><h2 class="h5">Employees</h2><p class="text-secondary mb-0">Local Spirit staffing roster.</p></div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a class="card dashboard-card h-100 text-decoration-none" href="{% url 'roles' %}">
+      <div class="card-body"><h2 class="h5">Roles</h2><p class="text-secondary mb-0">Role qualifications and capability levels.</p></div>
+    </a>
+  </div>
+  <div class="col-12">
+    <div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Future Schedule</h2><p class="text-secondary mb-0">Scheduling recommendations will be introduced in a later approved phase.</p></div></div>
+  </div>
+</div>
+{% endblock %}
+
