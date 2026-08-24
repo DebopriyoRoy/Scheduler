@@ -153,6 +153,9 @@ def test_excel_csv_and_pdf_exports_are_complete(staff_and_config):
     assert workbook["Schedule"]["A2"].value.date() == show.date
     assert workbook["Schedule"]["C2"].value == show.title
     assert workbook["Detailed Assignments"].max_row == 9
+    detailed_rows = list(workbook["Detailed Assignments"].iter_rows(values_only=True))
+    lead_row = next(row for row in detailed_rows if row[3] == "Server" and row[5] == "15:00")
+    assert lead_row[6] == "21:30"
     assert workbook["Employee Totals"].max_row == 18
     assert "Forever Country" in detailed_schedule_csv(run)
     pdf = schedule_pdf_bytes(run)
@@ -243,7 +246,7 @@ def test_schedule_generation_page_requires_explicit_shortage_choice(
 def test_demo_seed_is_idempotent_and_clearly_isolated():
     call_command("seed_schedule_demo", verbosity=0)
     call_command("seed_schedule_demo", verbosity=0)
-    assert Show.objects.count() == 5
+    assert Show.objects.count() == 6
     assert not Show.objects.exclude(source=Show.Source.DEMO).exists()
-    assert EmployeeAvailability.objects.count() == 85
+    assert EmployeeAvailability.objects.count() == 102
     assert not EmployeeAvailability.objects.exclude(source="DEMO").exists()

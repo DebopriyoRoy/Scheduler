@@ -20,6 +20,7 @@ DEMO_SHOWS = (
     (date(2026, 9, 19), "Shift Happens"),
     (date(2026, 9, 25), "Forever Country… In the Key of Spirit"),
     (date(2026, 10, 2), "Forever Country… In the Key of Spirit"),
+    (date(2026, 10, 3), "Shift Happens"),
 )
 
 

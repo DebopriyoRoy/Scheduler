@@ -1,5 +1,6 @@
 from io import BytesIO
 
+from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -96,6 +97,8 @@ def build_schedule_workbook(schedule_run) -> Workbook:
         "show", "employee", "role", "shift_template"
     )
     for assignment in assignments:
+        local_start = timezone.localtime(assignment.start_datetime)
+        local_end = timezone.localtime(assignment.end_datetime)
         detailed.append(
             [
                 assignment.show.date,
@@ -103,8 +106,8 @@ def build_schedule_workbook(schedule_run) -> Workbook:
                 assignment.employee.display_name,
                 assignment.role.name,
                 assignment.get_assignment_type_display(),
-                assignment.start_datetime.strftime("%H:%M"),
-                assignment.end_datetime.strftime("%H:%M"),
+                local_start.strftime("%H:%M"),
+                local_end.strftime("%H:%M"),
                 float(assignment.scheduled_paid_hours),
                 float(assignment.on_call_hours),
                 assignment.selection_reason,

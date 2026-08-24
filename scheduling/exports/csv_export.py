@@ -1,6 +1,8 @@
 import csv
 from io import StringIO
 
+from django.utils import timezone
+
 
 def detailed_schedule_csv(schedule_run) -> str:
     output = StringIO()
@@ -24,6 +26,8 @@ def detailed_schedule_csv(schedule_run) -> str:
     for assignment in schedule_run.assignments.select_related(
         "show", "employee", "role", "shift_template"
     ):
+        local_start = timezone.localtime(assignment.start_datetime)
+        local_end = timezone.localtime(assignment.end_datetime)
         writer.writerow(
             [
                 assignment.show.date.isoformat(),
@@ -31,8 +35,8 @@ def detailed_schedule_csv(schedule_run) -> str:
                 assignment.employee.display_name,
                 assignment.role.name,
                 assignment.get_assignment_type_display(),
-                assignment.start_datetime.isoformat(),
-                assignment.end_datetime.isoformat(),
+                local_start.isoformat(),
+                local_end.isoformat(),
                 assignment.scheduled_paid_hours,
                 assignment.on_call_hours,
                 assignment.selection_reason,

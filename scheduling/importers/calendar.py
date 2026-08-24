@@ -12,8 +12,20 @@ from django.db import transaction
 from scheduling.models import Show
 
 CALENDAR_URL = "https://spiritofnewfoundland.com/show-calendar/"
+PUBLIC_SITE_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36 "
+    "SpiritScheduler/2.0"
+)
 KNOWN_EVENT_PAGES = (
-    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-fall-2026/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-8/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-2-2/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-3-2/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-4/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-5/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-6/",
+    "https://spiritofnewfoundland.com/shows/forever-countryin-the-key-of-spirit-7/",
     "https://spiritofnewfoundland.com/shift-happens/",
 )
 MONTH_PATTERN = (
@@ -106,9 +118,6 @@ def events_from_html(html: str, source_url: str) -> list[ImportedEvent]:
                     source_url=url,
                 )
             )
-    if events:
-        return events
-
     title_element = soup.find("h1") or soup.find("title")
     title = title_element.get_text(" ", strip=True) if title_element else "Spirit Show"
     title = re.sub(r"\s*[|–-]\s*Spirit of Newfoundland.*$", "", title, flags=re.IGNORECASE)
@@ -124,7 +133,7 @@ def events_from_html(html: str, source_url: str) -> list[ImportedEvent]:
             f"{time_match.group(4)}:{time_match.group(5) or '00'} {time_match.group(6)}",
             "%I:%M %p",
         ).time()
-    seen_dates: set[date] = set()
+    seen_dates: set[date] = {event.date for event in events}
     for match in DATE_PATTERN.finditer(text):
         parsed_date = datetime.strptime(" ".join(match.groups()), "%B %d %Y").date()
         if parsed_date in seen_dates:
@@ -141,13 +150,18 @@ def events_from_html(html: str, source_url: str) -> list[ImportedEvent]:
                 source_url=source_url,
             )
         )
-    return events
+    return sorted(events, key=lambda event: (event.date, event.start_time, event.title))
 
 
 class SpiritCalendarImporter:
     def __init__(self, session: requests.Session | None = None):
         self.session = session or requests.Session()
-        self.session.headers.update({"User-Agent": "SpiritScheduler/2.0 calendar importer"})
+        self.session.headers.update(
+            {
+                "User-Agent": PUBLIC_SITE_USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml",
+            }
+        )
 
     def discover_urls(self) -> list[str]:
         urls = {CALENDAR_URL, *KNOWN_EVENT_PAGES}

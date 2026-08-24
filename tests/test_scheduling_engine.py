@@ -1,8 +1,10 @@
 from datetime import date, time
+from decimal import Decimal
 
 import pytest
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
+from django.utils import timezone
 
 from scheduling.models import (
     AssignmentType,
@@ -68,6 +70,18 @@ def test_standard_100_guest_show_has_required_coverage(configured_staff):
     assert run.assignments.filter(role__name="Busser").count() == 1
     assert run.assignments.filter(assignment_type=AssignmentType.FIFTY_FIFTY).count() == 1
     assert run.assignments.values("employee_id").distinct().count() == 8
+    lead = run.assignments.get(shift_template__code="lead-server")
+    assert timezone.localtime(lead.start_datetime).time() == time(15)
+    assert timezone.localtime(lead.end_datetime).time() == time(21, 30)
+    on_call = run.assignments.get(shift_template__code="on-call-server")
+    assert on_call.scheduled_paid_hours == 0
+    assert on_call.on_call_hours == Decimal("5.50")
+    confirmed_hours = sum(
+        assignment.scheduled_paid_hours
+        for assignment in run.assignments.exclude(assignment_type=AssignmentType.ON_CALL)
+    )
+    assert confirmed_hours == Decimal("31.50")
+    assert sum(assignment.on_call_hours for assignment in run.assignments.all()) == Decimal("11.00")
     assert run.status == ScheduleRunStatus.GENERATED
 
 
@@ -85,6 +99,12 @@ def test_unavailable_or_unknown_employee_is_never_scheduled(configured_staff, av
     entry.save()
     run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
     assert not run.assignments.filter(employee=olena).exists()
+    assert (
+        run.assignments.filter(
+            role__name="Server", assignment_type=AssignmentType.CONFIRMED
+        ).count()
+        == 3
+    )
 
 
 @pytest.mark.django_db
@@ -133,6 +153,17 @@ def test_bartender_positions_are_protected_before_server_assignment(configured_s
     )
     assert bartender_names.isdisjoint({"Jackie Pynn", "Joleen Dickson", "Svitlana"})
     assert run.assignments.filter(role__name="Bartender").count() == 2
+
+
+@pytest.mark.django_db
+def test_insufficient_bartenders_create_warnings_not_invalid_assignments(configured_staff):
+    show = make_show(requires_50_50=False)
+    make_all_available(configured_staff, show.date)
+    EmployeeRole.objects.filter(role__name="Bartender").update(active=False)
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+    assert not run.assignments.filter(role__name="Bartender").exists()
+    assert run.warnings.filter(warning_type=WarningType.BARTENDER_SHORTAGE).count() == 1
+    assert run.warnings.filter(warning_type=WarningType.ON_CALL_BARTENDER_SHORTAGE).count() == 1
 
 
 @pytest.mark.django_db
@@ -203,6 +234,20 @@ def test_priority_never_overrides_unavailability_or_qualification(configured_sta
     EmployeeRole.objects.filter(employee=olena, role__name="Server").update(active=False)
     run = SchedulingEngine().generate(show.date, show.date)
     assert not run.assignments.filter(employee=olena).exists()
+
+
+@pytest.mark.django_db
+def test_olena_and_jackie_receive_soft_confirmed_opportunity(configured_staff):
+    show = make_show(requires_50_50=False)
+    make_all_available(configured_staff, show.date)
+    run = SchedulingEngine().generate(show.date, show.date)
+    confirmed_server_names = set(
+        run.assignments.filter(
+            role__name="Server",
+            assignment_type=AssignmentType.CONFIRMED,
+        ).values_list("employee__display_name", flat=True)
+    )
+    assert {"Olena", "Jackie Pynn"}.issubset(confirmed_server_names)
 
 
 @pytest.mark.django_db
@@ -295,3 +340,37 @@ def test_office_warning_only_when_shift_times_overlap(configured_staff):
     )
     run = SchedulingEngine().generate(show.date, show.date)
     assert not run.warnings.filter(warning_type=WarningType.OFFICE_CONFLICT).exists()
+
+
+@pytest.mark.django_db
+def test_weekend_busser_work_is_distributed_before_repeating(configured_staff):
+    dates = [date(2026, 9, 12), date(2026, 9, 19), date(2026, 9, 26)]
+    for show_date in dates:
+        make_show(show_date, requires_50_50=False)
+    make_all_available(configured_staff, *dates)
+    run = SchedulingEngine().generate(dates[0], dates[-1])
+    busser_names = list(
+        run.assignments.filter(role__name="Busser")
+        .order_by("show__date")
+        .values_list("employee__display_name", flat=True)
+    )
+    assert len(set(busser_names)) == 3
+
+
+@pytest.mark.django_db
+def test_schedule_generation_is_deterministic(configured_staff):
+    show = make_show()
+    make_all_available(configured_staff, show.date)
+    first = SchedulingEngine().generate(show.date, show.date)
+    second = SchedulingEngine().generate(show.date, show.date)
+    first_assignments = list(
+        first.assignments.order_by("shift_template__position_order").values_list(
+            "shift_template__code", "employee__display_name"
+        )
+    )
+    second_assignments = list(
+        second.assignments.order_by("shift_template__position_order").values_list(
+            "shift_template__code", "employee__display_name"
+        )
+    )
+    assert first_assignments == second_assignments

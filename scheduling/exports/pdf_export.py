@@ -163,7 +163,7 @@ def schedule_pdf_bytes(schedule_run) -> bytes:
     story.append(
         _styled_table(
             warning_data,
-            [0.8 * inch, 0.9 * inch, 1.8 * inch, 6.6 * inch, 0.7 * inch],
+            [0.8 * inch, 0.9 * inch, 1.8 * inch, 6.0 * inch, 0.7 * inch],
             font_size=7,
         )
     )
