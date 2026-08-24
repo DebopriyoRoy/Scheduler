@@ -11,19 +11,20 @@ class StaffMember:
     display_name: str
     roles: tuple[tuple[str, int], ...]
     spirit_only_employment: bool = False
+    employment_priority: int = 0
 
 
 STAFF = (
     StaffMember("Joleen Dickson", (("Bartender", 5), ("Server", 5))),
-    StaffMember("Jackie Pynn", (("Bartender", 4), ("Server", 4)), True),
-    StaffMember("Olena", (("Server", 3),), True),
+    StaffMember("Jackie Pynn", (("Bartender", 4), ("Server", 4)), True, 1),
+    StaffMember("Olena", (("Server", 3),), True, 1),
     StaffMember("Yana", (("Server", 3), ("50/50", 3))),
     StaffMember("Kate", (("Server", 3), ("50/50", 3))),
     StaffMember("Molly Rittwage", (("Server", 3),)),
     StaffMember("Linda Penney", (("Server", 3),)),
     StaffMember("Daniel", (("Bartender", 3),)),
     StaffMember("Butros", (("Bartender", 3),)),
-    StaffMember("Svitlana", (("Bartender", 3),)),
+    StaffMember("Svitlana", (("Bartender", 3), ("Server", 3))),
     StaffMember("Patrice", (("Bartender", 3),)),
     StaffMember("Montana", (("Bartender", 3),)),
     StaffMember("Neil Bobbit", (("Bartender", 3),)),
@@ -51,6 +52,8 @@ class Command(BaseCommand):
                 "last_name": name_parts[1] if len(name_parts) > 1 else "",
                 "active": True,
                 "spirit_only_employment": member.spirit_only_employment,
+                "employment_priority": member.employment_priority,
+                "excluded_from_automatic_scheduling": False,
             }
             employee, created = Employee.objects.update_or_create(
                 display_name=member.display_name,
@@ -64,6 +67,9 @@ class Command(BaseCommand):
                     role=roles[role_name],
                     defaults={"capability_level": level, "active": True},
                 )
+            EmployeeRole.objects.filter(employee=employee).exclude(
+                role__name__in=[role_name for role_name, _ in member.roles]
+            ).update(active=False)
 
         assignment_count = EmployeeRole.objects.filter(
             employee__display_name__in=[member.display_name for member in STAFF]

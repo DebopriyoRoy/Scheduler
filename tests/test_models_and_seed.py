@@ -43,7 +43,7 @@ def test_staff_seed_is_idempotent_and_excludes_managers():
     call_command("seed_spirit_staff")
     assert Employee.objects.count() == 17
     assert Role.objects.count() == 4
-    assert EmployeeRole.objects.count() == 21
+    assert EmployeeRole.objects.filter(active=True).count() == 22
     assert not Employee.objects.filter(
         display_name__in=("Deborah Sweetapple", "Debroah Sweetapple", "John Harris", "John Haris")
     ).exists()
@@ -56,4 +56,10 @@ def test_staff_seed_is_idempotent_and_excludes_managers():
         "Server",
         "Bartender",
     }
-
+    assert jackie.employment_priority == 1
+    assert Employee.objects.get(display_name="Olena").employment_priority == 1
+    assert set(
+        Employee.objects.get(display_name="Svitlana")
+        .employee_roles.filter(active=True)
+        .values_list("role__name", flat=True)
+    ) == {"Server", "Bartender"}
