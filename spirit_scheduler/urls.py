@@ -14,4 +14,3 @@ urlpatterns = [
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("", include("scheduling.urls")),
 ]
-

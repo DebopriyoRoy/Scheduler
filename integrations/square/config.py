@@ -87,12 +87,10 @@ class SquareConfig:
     def require_sandbox(self) -> None:
         if self.environment is not SquareEnvironment.SANDBOX:
             raise SquareProductionWriteBlocked(
-                "Phase 1 is sandbox-only. Change SQUARE_ENVIRONMENT to sandbox."
+                "Square integration is sandbox-only in Phase 2. "
+                "Change SQUARE_ENVIRONMENT to sandbox."
             )
 
     def assert_write_allowed(self) -> None:
         if self.environment is SquareEnvironment.PRODUCTION:
-            raise SquareProductionWriteBlocked(
-                "Square production writes are disabled for Phase 1."
-            )
-
+            raise SquareProductionWriteBlocked("Square production writes are disabled in Phase 2.")

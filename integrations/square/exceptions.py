@@ -19,5 +19,4 @@ class SquareAPIError(SquareIntegrationError):
 
 
 class SquareProductionWriteBlocked(SquareIntegrationError):
-    """Raised whenever Phase 1 code attempts a Square production write."""
-
+    """Raised whenever the application attempts a Square production write."""

@@ -1,6 +1,6 @@
-# Future scheduling rules
+# Scheduling rules and future direction
 
-This document records business direction for later phases. Phase 1 does not implement a staffing optimizer, generate production rosters, or publish Square schedules.
+Phase 2 implements the core deterministic eligibility, staffing, rotation, fairness, warning, review, override, and local-approval rules below. Items explicitly described as future direction are not yet implemented. No phase currently publishes Square schedules or writes to Square Production.
 
 ## Decision order
 
@@ -44,7 +44,7 @@ Qualification is checked before fairness. Fairness must never make an employee e
 - Reliability and execution performance can be tie-breakers after eligibility and opportunity fairness.
 - Level 5 expands eligibility and coverage options; it must not automatically put someone first in every queue.
 - Every recommendation and deprioritization must be explainable to management.
-- Manager overrides must require a recorded reason in a later phase.
+- Manager overrides require a recorded reason and must still satisfy every hard constraint.
 
 Illustrative source weighting is 35% opportunity fairness, 25% recent workload fairness, 20% reliability, 15% execution performance, and 5% additional qualification. These weights are not approved implementation constants.
 

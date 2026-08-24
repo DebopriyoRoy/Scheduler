@@ -64,4 +64,3 @@ def create_sandbox_draft_shift(
         start_at=request.start_at,
         end_at=request.end_at,
     )
-

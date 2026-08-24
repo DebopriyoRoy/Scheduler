@@ -292,7 +292,7 @@ All automated tests mock Square requests. They never create real scheduled shift
 - Load all secrets from environment variables.
 - Never commit `.env`, tokens, passwords, cookies, keys, browser profiles, or session data.
 - Never log an access token or authorization header.
-- Keep production Square writes blocked throughout Phase 1.
+- Keep production Square writes blocked throughout Phase 2 and until a later phase is separately approved.
 - Do not add schedule-publishing endpoints or commands.
 - Run `python scripts/check_secrets.py` before each push.
 - Review `git status` and `git diff --cached` before committing.
