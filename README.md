@@ -247,4 +247,3 @@ The application is currently runnable on macOS with Python 3.12 and SQLite. Envi
 Phase 2, only after management approval, can add show dates, guest counts, availability ingestion, configurable staffing thresholds, scarce-skill protection, shortage detection, and explainable fairness ranking. Later phases can add manager review and overrides, controlled draft synchronization, timecard feedback, and parallel production validation.
 
 The detailed future rules are recorded in [`docs/scheduling_rules.md`](docs/scheduling_rules.md). General Square availability is not assumed to be API-accessible; a later phase must prove that capability or add a local availability entry/import workflow.
-

@@ -74,4 +74,3 @@ Later approved phases can add:
 - `AuditLog`
 
 The workflow remains: generate a local draft roster, review and override locally, create draft scheduled shifts in Square, review them in Square, and let management publish manually. Actual Square timecards then feed the next fairness cycle.
-

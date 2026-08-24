@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FORBIDDEN_NAMES = {".env", "id_rsa", "id_ed25519"}
 FORBIDDEN_SUFFIXES = {".key", ".pem", ".p12", ".pfx"}
 TOKEN_PATTERN = re.compile(
-    r"^SQUARE_(?:SANDBOX|PRODUCTION)_ACCESS_TOKEN\s*=\s*([^\s#]+)",
+    r"^SQUARE_(?:SANDBOX|PRODUCTION)_ACCESS_TOKEN[ \t]*=[ \t]*([^\s#]+)",
     re.MULTILINE,
 )
 
@@ -57,4 +57,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
