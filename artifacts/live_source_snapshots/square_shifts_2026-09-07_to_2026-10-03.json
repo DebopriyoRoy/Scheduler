@@ -1,0 +1,24 @@
+{
+  "retrieved_at": "2026-08-25T12:15:06.339859",
+  "source_url": "Square Production Labor API /v2/labor/scheduled-shifts/search",
+  "source_type": "LIVE_SQUARE_SHIFTS",
+  "total_shifts": 1,
+  "shifts": [
+    {
+      "id": "T39WJ6S3HYSSJ",
+      "draft_shift_details": {
+        "team_member_id": "TMw6AlQQaftVDYWM",
+        "location_id": "LR73BX986ZKYD",
+        "job_id": "a3j9wktGzEkSf3CJ171bxWLD",
+        "start_at": "2026-09-12T15:00:00-02:30",
+        "end_at": "2026-09-12T21:30:00-02:30",
+        "notes": "Spirit Scheduling Engine\nShow: Forever Country\u2026 In the Key of Spirit\nAssignment: Confirmed\nExpected Guests: 100\nSchedule Run: #2",
+        "is_deleted": false,
+        "timezone": "America/St_Johns"
+      },
+      "version": 1,
+      "created_at": "2026-08-25T13:45:05.731Z",
+      "updated_at": "2026-08-25T13:45:05.731Z"
+    }
+  ]
+}

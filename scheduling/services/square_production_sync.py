@@ -363,7 +363,7 @@ def preview_production_sync(
         errors.append("No active Square Production location selected.")
 
     existing_shifts: list[dict[str, Any]] = []
-    if config.token_is_configured and not errors:
+    if config.token_is_configured and location_id:
         try:
             prod_config = SquareConfig(
                 environment=SquareEnvironment.PRODUCTION,
@@ -378,7 +378,7 @@ def preview_production_sync(
             end_bound = f"{schedule_run.end_date.isoformat()}T23:59:59Z"
             query = {
                 "filter": {
-                    "start_at": {"start_at": start_bound, "end_at": end_bound},
+                    "start": {"start_at": start_bound, "end_at": end_bound},
                     "location_ids": [location_id],
                 }
             }

@@ -31,6 +31,42 @@ class ScheduleRunStatus(models.TextChoices):
     APPROVED = "APPROVED", "Approved"
     FAILED = "FAILED", "Failed"
     SYNCED_TO_SQUARE = "SYNCED_TO_SQUARE", "Synced to Square"
+    SUPERSEDED_SOURCE_DATA = "SUPERSEDED_SOURCE_DATA", "Superseded Source Data"
+
+
+class SourceTypeChoices(models.TextChoices):
+    LIVE_SPIRIT_CALENDAR = "LIVE_SPIRIT_CALENDAR", "Live Spirit Show Calendar"
+    LIVE_SQUARE_AVAILABILITY = "LIVE_SQUARE_AVAILABILITY", "Live Square Availability"
+    LIVE_SQUARE_SHIFTS = "LIVE_SQUARE_SHIFTS", "Live Square Shifts"
+    MANUAL = "MANUAL", "Manual Entry"
+    CSV_IMPORT = "CSV_IMPORT", "CSV Import"
+    DEMO = "DEMO", "Demo Seed"
+    SEED = "SEED", "System Seed"
+
+
+class SourceSnapshot(models.Model):
+    source_type = models.CharField(max_length=40, choices=SourceTypeChoices.choices)
+    source_url = models.URLField(max_length=500, blank=True)
+    environment = models.CharField(max_length=20, default="production")
+    retrieved_at = models.DateTimeField(auto_now_add=True)
+    record_count = models.PositiveIntegerField(default=0)
+    content_hash = models.CharField(max_length=64, blank=True)
+    is_live = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    raw_payload_json = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-retrieved_at"]
+
+    def __str__(self) -> str:
+        return f"{self.get_source_type_display()} ({self.retrieved_at:%Y-%m-%d %H:%M})"
+
+    @property
+    def is_stale(self) -> bool:
+        from django.utils import timezone
+        return (timezone.now() - self.retrieved_at).total_seconds() > 86400
+
+
 
 
 class WarningSeverity(models.TextChoices):
@@ -339,9 +375,23 @@ class ScheduleRun(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
     status = models.CharField(
-        max_length=24,
+        max_length=35,
         choices=ScheduleRunStatus.choices,
         default=ScheduleRunStatus.DRAFT,
+    )
+    calendar_snapshot = models.ForeignKey(
+        SourceSnapshot,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="calendar_schedule_runs",
+    )
+    availability_snapshot = models.ForeignKey(
+        SourceSnapshot,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="availability_schedule_runs",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -361,6 +411,7 @@ class ScheduleRun(models.Model):
     approved_at = models.DateTimeField(blank=True, null=True)
     algorithm_version = models.CharField(max_length=50, default="phase2-deterministic-v1")
     notes = models.TextField(blank=True)
+
 
     class Meta:
         ordering = ["-created_at"]

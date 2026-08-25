@@ -1,0 +1,3380 @@
+{
+  "retrieved_at": "2026-08-25T12:15:00.377238",
+  "source_url": "https://app.squareup.com/dashboard/shifts/schedule/availability",
+  "source_type": "LIVE_SQUARE_AVAILABILITY",
+  "total_staff": 17,
+  "date_range": {
+    "start": "2026-09-07",
+    "end": "2026-10-03",
+    "total_days": 27
+  },
+  "total_records": 459,
+  "staff_availability": [
+    {
+      "employee_id": 14,
+      "display_name": "Brittany James",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 9,
+      "display_name": "Butros",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 8,
+      "display_name": "Daniel",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 16,
+      "display_name": "Emily",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 2,
+      "display_name": "Jackie Pynn",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 1,
+      "display_name": "Joleen Dickson",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 5,
+      "display_name": "Kate",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 15,
+      "display_name": "Khrystyna",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 7,
+      "display_name": "Linda Penney",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 17,
+      "display_name": "Maks Plsky",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 6,
+      "display_name": "Molly Rittwage",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 12,
+      "display_name": "Montana",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 13,
+      "display_name": "Neil Bobbit",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 3,
+      "display_name": "Olena",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 11,
+      "display_name": "Patrice",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 10,
+      "display_name": "Svitlana",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    },
+    {
+      "employee_id": 4,
+      "display_name": "Yana",
+      "square_team_member_id": "",
+      "records_count": 27,
+      "days_available": 27,
+      "records": [
+        {
+          "date": "2026-09-07",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-08",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-09",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-10",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-11",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-12",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-13",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-14",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-15",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-16",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-17",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-18",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-19",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-20",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-21",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-22",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-23",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-24",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-25",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-26",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-27",
+          "day_of_week": "Sunday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-28",
+          "day_of_week": "Monday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-29",
+          "day_of_week": "Tuesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-09-30",
+          "day_of_week": "Wednesday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-01",
+          "day_of_week": "Thursday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-02",
+          "day_of_week": "Friday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        },
+        {
+          "date": "2026-10-03",
+          "day_of_week": "Saturday",
+          "available": true,
+          "availability_type": "AVAILABLE_ALL_DAY",
+          "notes": "Live Square availability"
+        }
+      ]
+    }
+  ]
+}
