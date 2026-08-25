@@ -26,7 +26,10 @@ def test_authenticated_user_can_open_dashboard(client):
 @pytest.mark.django_db
 def test_square_page_is_safe_without_token(client, monkeypatch):
     monkeypatch.setenv("SQUARE_ENVIRONMENT", "sandbox")
-    monkeypatch.delenv("SQUARE_SANDBOX_ACCESS_TOKEN", raising=False)
+    monkeypatch.setenv("SQUARE_SANDBOX_ACCESS_TOKEN", "")
+    monkeypatch.setenv("SQUARE_PRODUCTION_ACCESS_TOKEN", "")
+
+
     user = get_user_model().objects.create_user(username="manager", password="safe-test-password")
     client.force_login(user)
     response = client.get(reverse("square_integration"))

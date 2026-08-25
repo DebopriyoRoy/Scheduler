@@ -55,6 +55,38 @@ urlpatterns = [
         views.schedule_sync_confirm,
         name="schedule_sync_confirm",
     ),
+    path(
+        "integrations/square/team-mapping/",
+
+        views.square_team_mapping,
+        name="square_team_mapping",
+    ),
+    path(
+        "integrations/square/job-mapping/",
+        views.square_job_mapping,
+        name="square_job_mapping",
+    ),
+    path(
+        "schedules/<int:run_id>/square-sync/",
+        views.square_production_sync_hub,
+        name="square_production_sync_hub",
+    ),
+    path(
+        "schedules/<int:run_id>/pilot-confirm/",
+        views.square_production_pilot_confirm,
+        name="square_production_pilot_confirm",
+    ),
+    path(
+        "schedules/<int:run_id>/pilot-verify/",
+        views.square_production_pilot_verify,
+        name="square_production_pilot_verify",
+    ),
+    path(
+        "schedules/<int:run_id>/full-sync/",
+        views.square_production_full_sync,
+        name="square_production_full_sync",
+    ),
 ]
+
 
 

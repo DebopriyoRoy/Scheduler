@@ -530,3 +530,167 @@ class FiftyFiftyRotationConfig(models.Model):
         super().clean()
         if self.seed_employee.display_name not in {"Yana", "Kate"}:
             raise ValidationError({"seed_employee": "Choose either Yana or Kate."})
+
+
+class MappingStatus(models.TextChoices):
+    MAPPED = "MAPPED", "Mapped"
+    UNMAPPED = "UNMAPPED", "Unmapped"
+    AMBIGUOUS = "AMBIGUOUS", "Ambiguous"
+
+
+class SquareEnvironmentChoices(models.TextChoices):
+    SANDBOX = "sandbox", "Sandbox"
+    PRODUCTION = "production", "Production"
+
+
+class SquareSyncAuditAction(models.TextChoices):
+    PRODUCTION_SYNC_PREVIEWED = "PRODUCTION_SYNC_PREVIEWED", "Production sync previewed"
+    PRODUCTION_PILOT_STARTED = "PRODUCTION_PILOT_STARTED", "Production pilot started"
+    PRODUCTION_PILOT_CREATED = "PRODUCTION_PILOT_CREATED", "Production pilot created"
+    PRODUCTION_PILOT_VERIFIED = "PRODUCTION_PILOT_VERIFIED", "Production pilot verified"
+    PRODUCTION_SYNC_STARTED = "PRODUCTION_SYNC_STARTED", "Production sync started"
+    PRODUCTION_DRAFT_CREATED = "PRODUCTION_DRAFT_CREATED", "Production draft created"
+    PRODUCTION_DRAFT_ALREADY_EXISTS = (
+        "PRODUCTION_DRAFT_ALREADY_EXISTS",
+        "Production draft already exists",
+    )
+    PRODUCTION_CONFLICT = "PRODUCTION_CONFLICT", "Production conflict detected"
+    PRODUCTION_DRAFT_FAILED = "PRODUCTION_DRAFT_FAILED", "Production draft failed"
+    PRODUCTION_DRAFT_VERIFIED = "PRODUCTION_DRAFT_VERIFIED", "Production draft verified"
+    PRODUCTION_SYNC_COMPLETED = "PRODUCTION_SYNC_COMPLETED", "Production sync completed"
+
+
+class SquareEmployeeMapping(models.Model):
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="square_mappings",
+    )
+    environment = models.CharField(
+        max_length=20,
+        choices=SquareEnvironmentChoices.choices,
+        default=SquareEnvironmentChoices.SANDBOX,
+    )
+    square_team_member_id = models.CharField(max_length=100, blank=True)
+    square_given_name = models.CharField(max_length=100, blank=True)
+    square_family_name = models.CharField(max_length=100, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=MappingStatus.choices,
+        default=MappingStatus.UNMAPPED,
+    )
+    verified_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["environment", "employee__display_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "environment"],
+                name="unique_employee_environment_mapping",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee} ({self.environment}): {self.square_team_member_id or 'UNMAPPED'}"
+
+
+class SquareRoleMapping(models.Model):
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="square_mappings",
+    )
+    environment = models.CharField(
+        max_length=20,
+        choices=SquareEnvironmentChoices.choices,
+        default=SquareEnvironmentChoices.SANDBOX,
+    )
+    square_job_id = models.CharField(max_length=100, blank=True)
+    square_job_title = models.CharField(max_length=100, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=MappingStatus.choices,
+        default=MappingStatus.UNMAPPED,
+    )
+    verified_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["environment", "role__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["role", "environment"],
+                name="unique_role_environment_mapping",
+            )
+        ]
+
+    def __str__(self) -> str:
+        job_label = self.square_job_title or self.square_job_id or "UNMAPPED"
+        return f"{self.role} ({self.environment}): {job_label}"
+
+
+
+class SquareLocationMapping(models.Model):
+    environment = models.CharField(
+        max_length=20,
+        choices=SquareEnvironmentChoices.choices,
+        default=SquareEnvironmentChoices.SANDBOX,
+    )
+    square_location_id = models.CharField(max_length=100)
+    location_name = models.CharField(max_length=255)
+    active = models.BooleanField(default=True)
+    verified_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["environment", "location_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["environment", "square_location_id"],
+                name="unique_environment_square_location",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.location_name} ({self.environment}): {self.square_location_id}"
+
+
+class SquareSyncAuditLog(models.Model):
+    action_type = models.CharField(max_length=50, choices=SquareSyncAuditAction.choices)
+    environment = models.CharField(
+        max_length=20,
+        choices=SquareEnvironmentChoices.choices,
+        default=SquareEnvironmentChoices.PRODUCTION,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="square_sync_audit_logs",
+    )
+    schedule_run = models.ForeignKey(
+        ScheduleRun,
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="square_sync_audit_logs",
+    )
+    assignment = models.ForeignKey(
+        ScheduleAssignment,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="square_sync_audit_logs",
+    )
+    square_scheduled_shift_id = models.CharField(max_length=100, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.created_at:%Y-%m-%d %H:%M:%S} - {self.action_type} ({self.environment})"
+

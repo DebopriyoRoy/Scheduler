@@ -1,0 +1,77 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Square Production Team Mapping | Spirit Scheduling Engine{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Square Integration</p>
+    <h1 class="h2">Square Production Team Member Mapping</h1>
+    <p class="text-secondary mb-0">Map active local employees to real Production Square Team Member IDs using exact normalized name matching.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'square_integration' %}">Integration Overview</a>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="auto_match">
+      <button class="btn btn-primary">Auto-Match Production Staff</button>
+    </form>
+  </div>
+</div>
+
+<div class="alert alert-info">
+  <strong>Normalized Exact Matching Only:</strong> Automatic matching compares exact normalized names (ignoring case & whitespace). Fuzzy matching is strictly disabled. Unmatched staff must be resolved manually.
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Local Employee</th>
+          <th>Square Production Name</th>
+          <th>Square Team Member ID</th>
+          <th>Mapping Status</th>
+          <th>Last Verified</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in mappings %}
+        <tr>
+          <td><strong>{{ item.employee.display_name }}</strong></td>
+          <td>
+            {% if item.square_given_name or item.square_family_name %}
+              {{ item.square_given_name }} {{ item.square_family_name }}
+            {% else %}
+              <span class="text-secondary">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.square_team_member_id %}
+              <code>{{ item.square_team_member_id }}</code>
+            {% else %}
+              <span class="text-danger fw-bold">UNMAPPED</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.status == 'MAPPED' %}
+              <span class="badge text-bg-success">MAPPED</span>
+            {% elif item.status == 'AMBIGUOUS' %}
+              <span class="badge text-bg-warning">AMBIGUOUS MATCH</span>
+            {% else %}
+              <span class="badge text-bg-danger">UNMAPPED</span>
+            {% endif %}
+          </td>
+          <td><small class="text-secondary">{{ item.verified_at|date:"Y-m-d H:i"|default:"Never" }}</small></td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center py-4 text-secondary">
+            No Production employee mappings recorded yet. Click <strong>Auto-Match Production Staff</strong> above to fetch team members from Square.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

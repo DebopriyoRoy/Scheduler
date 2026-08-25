@@ -19,4 +19,17 @@ class SquareAPIError(SquareIntegrationError):
 
 
 class SquareProductionWriteBlocked(SquareIntegrationError):
-    """Raised whenever the application attempts a Square production write."""
+    """Raised whenever the application attempts an unauthorized Square production write."""
+
+
+class SquareProductionWritesDisabledError(SquareProductionWriteBlocked):
+    """Raised when SQUARE_PRODUCTION_WRITES_ENABLED is False."""
+
+
+class SquarePilotNotVerifiedError(SquareIntegrationError):
+    """Raised when full production sync is attempted before pilot verification."""
+
+
+class SquarePublishingDisabledError(SquareIntegrationError):
+    """Raised if any attempt is made to publish shifts via the application."""
+

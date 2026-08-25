@@ -42,10 +42,25 @@ from scheduling.models import (
     ScheduleRunStatus,
     SchedulingWarning,
     Show,
+    SquareEmployeeMapping,
+    SquareEnvironmentChoices,
+    SquareRoleMapping,
+    SquareSyncAuditAction,
+    SquareSyncAuditLog,
     WarningSeverity,
 )
 from scheduling.services.engine import IncompleteAvailabilityError, SchedulingEngine
 from scheduling.services.metrics import metrics_for_employee
+from scheduling.services.square_production_sync import (
+    EXPECTED_STAFF_NAMES,
+    SquareProductionSyncError,
+    create_production_pilot_shift,
+    mark_pilot_verified,
+    preview_production_sync,
+    sync_full_production_schedule,
+    sync_production_jobs,
+    sync_production_team_members,
+)
 from scheduling.services.square_sync import (
     SquareSyncError,
     sync_schedule_to_sandbox,
@@ -64,10 +79,16 @@ def square_connection_context() -> dict[str, object]:
     try:
         config = SquareConfig.from_env()
         context["environment"] = config.environment.value.title()
-        if config.environment is SquareEnvironment.SANDBOX and config.token_is_configured:
+        if not config.token_is_configured:
+            context["connection_status"] = "Not Connected"
+        elif config.environment is SquareEnvironment.SANDBOX:
             context["locations"] = SquareClient(config).test_connection()
             context["connection_status"] = "Connected to Sandbox"
+        elif config.environment is SquareEnvironment.PRODUCTION:
+            context["locations"] = SquareClient(config).test_connection()
+            context["connection_status"] = "Connected to Production"
     except SquareIntegrationError as exc:
+        context["connection_status"] = "Connection Error"
         context["error_message"] = str(exc)
     return context
 
@@ -571,4 +592,148 @@ def schedule_sync_confirm(request, run_id):
         except SquareSyncError as exc:
             messages.error(request, str(exc))
     return redirect("schedule_detail", run_id=run_id)
+
+
+@login_required
+def square_team_mapping(request):
+    if request.method == "POST" and request.POST.get("action") == "auto_match":
+        try:
+            res = sync_production_team_members(user=request.user)
+            messages.success(
+                request,
+                f"Production Team Auto-Match complete: {res['mapped']} mapped, "
+                f"{res['unmapped']} unmapped, {res['ambiguous']} ambiguous.",
+            )
+        except Exception as exc:
+            messages.error(request, f"Unable to fetch Production team members: {exc}")
+        return redirect("square_team_mapping")
+
+    mappings = SquareEmployeeMapping.objects.filter(
+        environment=SquareEnvironmentChoices.PRODUCTION
+    ).select_related("employee")
+    return render(
+        request,
+        "scheduling/square_team_mapping.html",
+        {
+            "mappings": mappings,
+            "expected_staff": EXPECTED_STAFF_NAMES,
+        },
+    )
+
+
+@login_required
+def square_job_mapping(request):
+    if request.method == "POST" and request.POST.get("action") == "auto_match":
+        try:
+            res = sync_production_jobs(user=request.user)
+            messages.success(
+                request,
+                f"Production Jobs Auto-Match complete: {res['mapped']} mapped, "
+                f"{res['unmapped']} unmapped.",
+            )
+        except Exception as exc:
+            messages.error(request, f"Unable to fetch Production jobs: {exc}")
+        return redirect("square_job_mapping")
+
+    mappings = SquareRoleMapping.objects.filter(
+        environment=SquareEnvironmentChoices.PRODUCTION
+    ).select_related("role")
+    return render(
+        request,
+        "scheduling/square_job_mapping.html",
+        {
+            "mappings": mappings,
+        },
+    )
+
+
+@login_required
+def square_production_sync_hub(request, run_id):
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    config = SquareConfig.from_env()
+    preview = preview_production_sync(schedule_run, user=request.user)
+
+    pilot_audit = SquareSyncAuditLog.objects.filter(
+        schedule_run=schedule_run,
+        action_type=SquareSyncAuditAction.PRODUCTION_PILOT_CREATED,
+    ).first()
+
+    verified_audit = SquareSyncAuditLog.objects.filter(
+        action_type=SquareSyncAuditAction.PRODUCTION_PILOT_VERIFIED,
+    ).first()
+
+    audit_logs = SquareSyncAuditLog.objects.filter(
+        schedule_run=schedule_run
+    ).order_by("-created_at")[:20]
+
+    return render(
+        request,
+        "scheduling/square_production_sync.html",
+        {
+            "schedule_run": schedule_run,
+            "config": config,
+            "preview": preview,
+            "pilot_audit": pilot_audit,
+            "verified_audit": verified_audit,
+            "audit_logs": audit_logs,
+        },
+    )
+
+
+@login_required
+def square_production_pilot_confirm(request, run_id):
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    if request.method == "POST":
+        phrase = request.POST.get("confirmation_phrase", "").strip()
+        assignment_id = request.POST.get("assignment_id")
+        try:
+            res = create_production_pilot_shift(
+                schedule_run,
+                assignment_id=int(assignment_id),
+                confirmation_phrase=phrase,
+                user=request.user,
+            )
+            shift_id = res['square_scheduled_shift_id']
+            messages.success(
+                request,
+                f"PRODUCTION PILOT CREATED: Created draft shift {shift_id} in Square Production! "
+                "Inspect the draft shift in Square Dashboard manually before proceeding.",
+            )
+        except (ValueError, SquareProductionSyncError) as exc:
+            messages.error(request, str(exc))
+    return redirect("square_production_sync_hub", run_id=run_id)
+
+
+@login_required
+def square_production_pilot_verify(request, run_id):
+    get_object_or_404(ScheduleRun, pk=run_id)
+    if request.method == "POST":
+        square_shift_id = request.POST.get("square_shift_id", "").strip()
+        mark_pilot_verified(user=request.user, square_shift_id=square_shift_id)
+        messages.success(request, "Production Pilot Verified recorded successfully!")
+    return redirect("square_production_sync_hub", run_id=run_id)
+
+
+@login_required
+def square_production_full_sync(request, run_id):
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    if request.method == "POST":
+        phrase = request.POST.get("confirmation_phrase", "").strip()
+        try:
+            res = sync_full_production_schedule(
+                schedule_run,
+                confirmation_phrase=phrase,
+                user=request.user,
+            )
+            count = res['created_count']
+            messages.success(
+                request,
+                f"Full Production Sync Complete: Created {count} draft shifts in Square!",
+            )
+
+        except SquareProductionSyncError as exc:
+            messages.error(request, str(exc))
+    return redirect("square_production_sync_hub", run_id=run_id)
+
+
 

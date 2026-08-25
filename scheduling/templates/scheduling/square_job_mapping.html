@@ -1,0 +1,69 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Square Production Job Mapping | Spirit Scheduling Engine{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Square Integration</p>
+    <h1 class="h2">Square Production Job Mapping</h1>
+    <p class="text-secondary mb-0">Map local staffing roles (Server, Bartender, Busser, 50/50) to real Production Square Job IDs.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'square_integration' %}">Integration Overview</a>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="auto_match">
+      <button class="btn btn-primary">Auto-Match Production Jobs</button>
+    </form>
+  </div>
+</div>
+
+<div class="alert alert-info">
+  <strong>Role Protection:</strong> Unmapped roles will block draft shift creation for assignments using those roles. Square Production jobs are never created automatically.
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Local Role</th>
+          <th>Square Production Job Title</th>
+          <th>Square Job ID</th>
+          <th>Status</th>
+          <th>Last Verified</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in mappings %}
+        <tr>
+          <td><strong>{{ item.role.name }}</strong></td>
+          <td>{{ item.square_job_title|default:"—" }}</td>
+          <td>
+            {% if item.square_job_id %}
+              <code>{{ item.square_job_id }}</code>
+            {% else %}
+              <span class="text-danger fw-bold">UNMAPPED</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.status == 'MAPPED' %}
+              <span class="badge text-bg-success">MAPPED</span>
+            {% else %}
+              <span class="badge text-bg-danger">UNMAPPED</span>
+            {% endif %}
+          </td>
+          <td><small class="text-secondary">{{ item.verified_at|date:"Y-m-d H:i"|default:"Never" }}</small></td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center py-4 text-secondary">
+            No Production job mappings recorded yet. Click <strong>Auto-Match Production Jobs</strong> above to fetch jobs from Square.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

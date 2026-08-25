@@ -1,0 +1,280 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Square Production Sync Hub (Schedule #{{ schedule_run.pk }}) | Spirit Scheduling Engine{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Controlled Production Synchronization</p>
+    <h1 class="h2">Square Production Sync Hub (Schedule #{{ schedule_run.pk }})</h1>
+    <p class="text-secondary mb-0">Period: {{ schedule_run.start_date }} – {{ schedule_run.end_date }} | Target Location: <strong>{{ preview.location_name }}</strong> (<code>{{ preview.location_id|default:"UNMAPPED" }}</code>)</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'schedule_detail' schedule_run.pk %}">Back to Schedule</a>
+</div>
+
+<div class="alert alert-danger shadow-sm mb-4">
+  <div class="d-flex align-items-center gap-2">
+    <strong class="fs-5">Absolute Publishing Safeguard:</strong>
+  </div>
+  <p class="mb-0 mt-1">This application creates <strong>UNPUBLISHED DRAFT SHIFTS ONLY</strong> in Square Production. It will <strong>NEVER automatically publish shifts</strong>. Management must review and publish schedule shifts manually from the official Square Dashboard.</p>
+</div>
+
+<!-- Configuration & Prerequisites Status -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="text-secondary small fw-semibold text-uppercase">Environment</span>
+        <h5 class="card-title text-primary mt-1">{{ config.environment|upper }}</h5>
+        <small class="text-muted">Target API base URL</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="text-secondary small fw-semibold text-uppercase">Production Writes</span>
+        <h5 class="card-title mt-1">
+          {% if config.production_writes_enabled %}
+            <span class="text-success">ENABLED</span>
+          {% else %}
+            <span class="text-danger">DISABLED</span>
+          {% endif %}
+        </h5>
+        <small class="text-muted"><code>SQUARE_PRODUCTION_WRITES_ENABLED</code></small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="text-secondary small fw-semibold text-uppercase">One-Shift Pilot Status</span>
+        <h5 class="card-title mt-1">
+          {% if verified_audit or config.production_pilot_verified %}
+            <span class="text-success">PILOT VERIFIED</span>
+          {% elif pilot_audit %}
+            <span class="text-warning">PILOT CREATED (Unverified)</span>
+          {% else %}
+            <span class="text-secondary">NOT CREATED</span>
+          {% endif %}
+        </h5>
+        <small class="text-muted">1-shift test in Square</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="text-secondary small fw-semibold text-uppercase">Pre-Sync Classifications</span>
+        <h5 class="card-title mt-1">
+          <span class="text-success">{{ preview.ready_count }} Ready</span> | <span class="text-danger">{{ preview.blocked_count }} Blocked</span>
+        </h5>
+        <small class="text-muted">{{ preview.rows|length }} Total proposed shifts</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fast Links & Mapping Management -->
+<div class="d-flex gap-2 mb-4">
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'square_team_mapping' %}">Manage Production Team Mappings</a>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'square_job_mapping' %}">Manage Production Job Mappings</a>
+</div>
+
+<!-- Read-Only Preview Section -->
+<h2 class="h4 mb-3">1. Read-Only Production Sync Preview</h2>
+<div class="card border-0 shadow-sm mb-5">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Show</th>
+          <th>Employee</th>
+          <th>Role</th>
+          <th>Type</th>
+          <th>Start / End (Local)</th>
+          <th>Square Team ID</th>
+          <th>Square Job ID</th>
+          <th>Preview Classification</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview.rows %}
+        <tr>
+          <td><strong>{{ row.show_date }}</strong></td>
+          <td>{{ row.show_title }}</td>
+          <td>{{ row.employee_name }}</td>
+          <td>{{ row.role_name }}</td>
+          <td><span class="badge text-bg-info">{{ row.assignment_type }}</span></td>
+          <td><small>{{ row.start_at|slice:":19" }} to {{ row.end_at|slice:":19" }}</small></td>
+          <td><code>{{ row.square_team_member_id }}</code></td>
+          <td><code>{{ row.square_job_id }}</code></td>
+          <td>
+            {% if row.result_status == 'READY_TO_CREATE' %}
+              <span class="badge text-bg-success">READY TO CREATE</span>
+            {% elif row.result_status == 'ALREADY_EXISTS' %}
+              <span class="badge text-bg-secondary">ALREADY EXISTS</span>
+            {% elif row.result_status == 'EXISTING_SHIFT_CONFLICT' %}
+              <span class="badge text-bg-warning text-dark">SHIFT CONFLICT</span>
+            {% else %}
+              <span class="badge text-bg-danger">{{ row.result_status }}</span>
+            {% endif %}
+            <br><small class="text-secondary">{{ row.reason }}</small>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Step 2: One-Shift Production Pilot Section -->
+<h2 class="h4 mb-3">2. Controlled One-Shift Production Pilot</h2>
+<div class="card border-0 shadow-sm mb-5">
+  <div class="card-body">
+    <p class="text-secondary">Before performing a full schedule sync, management must run a <strong>One-Shift Production Pilot</strong>. This creates exactly ONE unpublished draft shift in Square Production for manual inspection.</p>
+
+    {% if pilot_audit %}
+      <div class="alert alert-success">
+        <strong>Production Pilot Created!</strong> Draft shift ID: <code>{{ pilot_audit.square_scheduled_shift_id }}</code> (Created: {{ pilot_audit.created_at|date:"Y-m-d H:i:s" }}).
+      </div>
+      
+      <div class="p-3 bg-light rounded mb-3">
+        <h5 class="h6 fw-bold">Manual Square Dashboard Inspection Steps:</h5>
+        <ol class="mb-0 small">
+          <li>Open official <a href="https://app.squareup.com/dashboard/shifts/schedule" target="_blank">Square Dashboard → Shifts → Schedule</a>.</li>
+          <li>Find the pilot shift on date <strong>{{ pilot_audit.details.show }}</strong> for employee <strong>{{ pilot_audit.details.employee }}</strong>.</li>
+          <li>Confirm employee name, role, date, start/end times match expected roster details.</li>
+          <li>Confirm the shift remains <strong>UNPUBLISHED / DRAFT</strong>.</li>
+          <li>Return here and click <strong>Mark Pilot Verified</strong> below.</li>
+        </ol>
+      </div>
+
+      {% if not verified_audit and not config.production_pilot_verified %}
+        <form method="post" action="{% url 'square_production_pilot_verify' schedule_run.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="square_shift_id" value="{{ pilot_audit.square_scheduled_shift_id }}">
+          <button class="btn btn-success">Mark Pilot Verified in Square</button>
+        </form>
+      {% else %}
+        <div class="badge text-bg-success p-2">✓ Production Pilot Verified</div>
+      {% endif %}
+
+    {% else %}
+      {% if not config.production_writes_enabled %}
+        <div class="alert alert-warning">
+          <strong>Production Writes Disabled:</strong> Set <code>SQUARE_PRODUCTION_WRITES_ENABLED=true</code> in your environment file to enable the One-Shift Pilot.
+        </div>
+      {% elif not preview.is_ready_for_pilot %}
+        <div class="alert alert-danger">
+          <strong>Pilot Cannot Run:</strong> Fix pre-sync validation errors and employee/role mappings before creating a pilot.
+        </div>
+      {% else %}
+        <form method="post" action="{% url 'square_production_pilot_confirm' schedule_run.pk %}">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-bold">Select One Assignment for Pilot:</label>
+            <select class="form-select" name="assignment_id" required>
+              {% for r in preview.rows %}
+                {% if r.result_status == 'READY_TO_CREATE' %}
+                  <option value="{{ r.assignment_id }}">
+                    {{ r.show_date }} | {{ r.show_title }} - {{ r.employee_name }} ({{ r.role_name }})
+                  </option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="pilot_check" required>
+            <label class="form-check-label text-danger fw-semibold" for="pilot_check">
+              I understand this will create one real unpublished draft shift in Square Production.
+            </label>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Typed Confirmation Phrase:</label>
+            <input class="form-control" name="confirmation_phrase" placeholder="Type: CREATE ONE PRODUCTION DRAFT" required pattern="CREATE ONE PRODUCTION DRAFT">
+            <small class="text-muted">Type exactly: <code>CREATE ONE PRODUCTION DRAFT</code></small>
+          </div>
+
+          <button class="btn btn-warning btn-lg">Execute One-Shift Production Pilot</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<!-- Step 3: Full Production Schedule Sync Section -->
+<h2 class="h4 mb-3">3. Full Production Draft Synchronization</h2>
+<div class="card border-0 shadow-sm mb-5">
+  <div class="card-body">
+    {% if not verified_audit and not config.production_pilot_verified %}
+      <div class="alert alert-secondary mb-0">
+        <strong>Full Sync Blocked:</strong> Full Production draft synchronization requires completing and verifying the One-Shift Production Pilot first.
+      </div>
+    {% elif not preview.is_ready_for_full_sync %}
+      <div class="alert alert-warning mb-0">
+        <strong>Sync Prerequisites Incomplete:</strong> Ensure all assignments are mapped, <code>SQUARE_PRODUCTION_WRITES_ENABLED=true</code>, and pilot is verified.
+      </div>
+    {% else %}
+      <div class="alert alert-info">
+        You are about to create <strong>{{ preview.ready_count }}</strong> unpublished draft scheduled shifts in the <strong>REAL Square Production</strong> account. These shifts will NOT be published automatically.
+      </div>
+
+      <form method="post" action="{% url 'square_production_full_sync' schedule_run.pk %}">
+        {% csrf_token %}
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="full_sync_check" required>
+          <label class="form-check-label text-danger fw-semibold" for="full_sync_check">
+            I understand these are real Square Production draft shifts.
+          </label>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Typed Confirmation Phrase:</label>
+          <input class="form-control" name="confirmation_phrase" placeholder="Type: CREATE SQUARE DRAFTS" required pattern="CREATE SQUARE DRAFTS">
+          <small class="text-muted">Type exactly: <code>CREATE SQUARE DRAFTS</code></small>
+        </div>
+
+        <button class="btn btn-danger btn-lg" onclick="return confirm('Confirm full Production sync of {{ preview.ready_count }} draft shift(s)?');">
+          Execute Full Production Sync
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Audit Log Summary -->
+<h2 class="h4 mb-3">Sync Audit Log History</h2>
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Timestamp</th>
+          <th>Action</th>
+          <th>User</th>
+          <th>Square Shift ID</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in audit_logs %}
+        <tr>
+          <td><small>{{ log.created_at|date:"Y-m-d H:i:s" }}</small></td>
+          <td><span class="badge text-bg-primary">{{ log.get_action_type_display }}</span></td>
+          <td>{{ log.user.username|default:"System" }}</td>
+          <td><code>{{ log.square_scheduled_shift_id|default:"—" }}</code></td>
+          <td><small class="text-secondary">{{ log.details }}</small></td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center py-3 text-secondary">No audit logs recorded for this schedule run yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

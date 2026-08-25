@@ -181,3 +181,8 @@ class SquareClient:
             },
         )
         return dict(payload.get("scheduled_shift", {}))
+
+    def get_scheduled_shift(self, shift_id: str) -> dict[str, Any]:
+        payload = self._request("GET", f"/v2/labor/scheduled-shifts/{shift_id}")
+        return dict(payload.get("scheduled_shift", {}))
+
