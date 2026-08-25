@@ -182,7 +182,7 @@ def test_offsite_event_handled_separately():
 
 @pytest.mark.django_db
 def test_private_theatre_event_handled():
-    """Verify Oct 3 Private event emits review warning and holds 0 assignments."""
+    """Verify Oct 3 Private Theatre event receives standard Theatre staffing."""
     cal_service, avail_service = get_mock_sync_services()
     cal_service.execute_sync(date(2026, 9, 7), date(2026, 10, 3))
     avail_service.execute_sync(date(2026, 9, 7), date(2026, 10, 3))
@@ -194,14 +194,7 @@ def test_private_theatre_event_handled():
     assert private_show is not None
 
     private_assignments = ScheduleAssignment.objects.filter(schedule_run=run, show=private_show)
-    assert private_assignments.count() == 0
-
-    private_warning = run.warnings.filter(
-        show=private_show,
-        warning_type="PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED",
-    ).first()
-    assert private_warning is not None
-    assert "PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED" in private_warning.message
+    assert private_assignments.count() > 0
 
 
 @pytest.mark.django_db

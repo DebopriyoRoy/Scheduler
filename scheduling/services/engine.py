@@ -160,11 +160,10 @@ class SchedulingEngine:
                     schedule_run,
                     show,
                     WarningType.PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED,
-                    WarningSeverity.WARNING,
-                    "PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED: Private event requires "
-                    "explicit management approval before applying standard staffing profile.",
+                    WarningSeverity.INFO,
+                    "PRIVATE_EVENT_STAFFED: Private theatre event scheduled using standard "
+                    "theatre staffing profile.",
                 )
-                continue
 
             requirements, outside_rules = staffing_requirements_for(show)
             if outside_rules:
