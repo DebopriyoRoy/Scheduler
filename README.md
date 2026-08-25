@@ -200,7 +200,13 @@ All exported times are rendered in `America/St_Johns` local time. Exports contai
 
 ### Square Production status
 
-**Square Production synchronization is NOT enabled in Phase 2.** Schedule generation, approval, and export are local. The application does not publish schedules or create Production shifts. The Phase 1 controlled Sandbox draft command remains isolated and is not called by the management workflow.
+**Controlled Square Production Draft Sync is ENABLED.** Management can send an approved local schedule into the real Spirit of Newfoundland Square Production Account as **unpublished draft shifts**.
+
+- **Exact & Candidate Staff Mapping**: Auto-matches active Square team members with manual review approval workflow.
+- **Controlled One-Shift Pilot Workflow**: Verified with pilot shift `T39WJ6S3HYSSJ` for Jackie Pynn.
+- **Pilot Duplicate Detection**: Existing pilot shifts and shifts in Square are classified as `ALREADY_EXISTS` and linked without creating duplicates.
+- **Absolute Publishing Block**: The application creates **DRAFT SHIFTS ONLY**. It strictly refuses to auto-publish any shift. Management manually reviews and publishes shifts in Square Dashboard.
+
 
 ## Square Sandbox setup
 
