@@ -46,6 +46,11 @@ from scheduling.models import (
 )
 from scheduling.services.engine import IncompleteAvailabilityError, SchedulingEngine
 from scheduling.services.metrics import metrics_for_employee
+from scheduling.services.square_sync import (
+    SquareSyncError,
+    sync_schedule_to_sandbox,
+    validate_schedule_for_sync,
+)
 from scheduling.services.workflow import approve_schedule, override_assignment, resolve_warning
 
 
@@ -537,3 +542,33 @@ def schedule_export_pdf(request, run_id):
     response = HttpResponse(schedule_pdf_bytes(schedule_run), content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="schedule-run-{run_id}.pdf"'
     return response
+
+
+@login_required
+def schedule_sync_preview(request, run_id):
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    validation = validate_schedule_for_sync(schedule_run)
+    return render(
+        request,
+        "scheduling/schedule_sync_preview.html",
+        {
+            "schedule_run": schedule_run,
+            "validation": validation,
+        },
+    )
+
+
+@login_required
+def schedule_sync_confirm(request, run_id):
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    if request.method == "POST":
+        try:
+            result = sync_schedule_to_sandbox(schedule_run)
+            messages.success(
+                request,
+                f"Successfully synced {result['synced_count']} draft shift(s) to Square Sandbox!",
+            )
+        except SquareSyncError as exc:
+            messages.error(request, str(exc))
+    return redirect("schedule_detail", run_id=run_id)
+

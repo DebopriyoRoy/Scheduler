@@ -1,0 +1,126 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Sync Preview Schedule #{{ schedule_run.pk }} | Spirit Scheduling Engine{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Square Sandbox Integration</p>
+    <h1 class="h2">Pre-Sync Validation Preview (Schedule #{{ schedule_run.pk }})</h1>
+    <p class="text-secondary mb-0">Period: {{ schedule_run.start_date }} – {{ schedule_run.end_date }} | Target Location: <strong>{{ validation.location_name }}</strong> (<code>{{ validation.location_id|default:"Unmapped" }}</code>)</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'schedule_detail' schedule_run.pk %}">Back to Schedule</a>
+</div>
+
+<div class="alert alert-warning">
+  <strong>Square Sandbox Safety Mode:</strong> This workflow publishes draft shifts to <strong>Square Sandbox</strong>. Production writes remain unconditionally blocked.
+</div>
+
+{% if validation.errors %}
+<div class="card border-danger mb-4 shadow-sm">
+  <div class="card-header bg-danger text-white fw-bold">
+    Pre-Sync Validation Failed ({{ validation.errors|length }} Error{{ validation.errors|pluralize }})
+  </div>
+  <div class="card-body">
+    <p class="card-text text-danger fw-semibold">The schedule cannot be synced until the following requirements are resolved:</p>
+    <ul class="mb-0">
+      {% for error in validation.errors %}
+        <li class="text-danger">{{ error }}</li>
+      {% endfor %}
+    </ul>
+    {% if validation.unmapped_employees %}
+      <div class="mt-3">
+        <span class="fw-bold">Unmapped Employees:</span>
+        <div class="mt-1">
+          {% for emp in validation.unmapped_employees %}
+            <span class="badge text-bg-danger me-1">{{ emp.display_name }}</span>
+          {% endfor %}
+        </div>
+        <small class="text-muted">Map Square Team Member IDs in <a href="{% url 'employees' %}">Employees management</a>.</small>
+      </div>
+    {% endif %}
+    {% if validation.unmapped_roles %}
+      <div class="mt-3">
+        <span class="fw-bold">Unmapped Roles:</span>
+        <div class="mt-1">
+          {% for role in validation.unmapped_roles %}
+            <span class="badge text-bg-danger me-1">{{ role.name }}</span>
+          {% endfor %}
+        </div>
+        <small class="text-muted">Map Square Job IDs in <a href="{% url 'roles' %}">Roles management</a>.</small>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if validation.warnings %}
+<div class="card border-warning mb-4 shadow-sm">
+  <div class="card-header bg-warning text-dark fw-bold">
+    Warnings & Conflict Warnings ({{ validation.warnings|length }})
+  </div>
+  <div class="card-body">
+    <ul class="mb-0">
+      {% for warning in validation.warnings %}
+        <li>{{ warning }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+<h2 class="h4 mt-4 mb-3">Draft Shift Payload Preview ({{ validation.assignments_payload|length }} Shifts)</h2>
+<div class="card border-0 shadow-sm mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Show</th>
+          <th>Employee</th>
+          <th>Role</th>
+          <th>Type</th>
+          <th>Start / End (Local)</th>
+          <th>Square Team ID</th>
+          <th>Square Job ID</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in validation.assignments_payload %}
+        <tr>
+          <td><strong>{{ item.show_date }}</strong></td>
+          <td>{{ item.show_title }}</td>
+          <td>{{ item.employee_name }}</td>
+          <td>{{ item.role_name }}</td>
+          <td><span class="badge text-bg-info">{{ item.assignment_type }}</span></td>
+          <td><small>{{ item.start_at|slice:":19" }} to {{ item.end_at|slice:":19" }}</small></td>
+          <td><code>{{ item.employee_square_id }}</code></td>
+          <td><code>{{ item.role_square_id }}</code></td>
+          <td>
+            {% if item.has_unmapped %}
+              <span class="badge text-bg-danger">Missing Square ID</span>
+            {% else %}
+              <span class="badge text-bg-success">Ready to Sync</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="d-flex justify-content-end gap-3 mb-5">
+  <a class="btn btn-outline-secondary" href="{% url 'schedule_detail' schedule_run.pk %}">Cancel</a>
+  {% if validation.is_valid %}
+    <form method="post" action="{% url 'schedule_sync_confirm' schedule_run.pk %}">
+      {% csrf_token %}
+      <button class="btn btn-primary btn-lg" onclick="return confirm('Confirm sync of {{ validation.assignments_payload|length }} draft shift(s) to Square Sandbox?');">
+        Confirm Sync to Square Sandbox
+      </button>
+    </form>
+  {% else %}
+    <button class="btn btn-primary btn-lg" disabled>Cannot Sync (Resolve Validation Errors)</button>
+  {% endif %}
+</div>
+{% endblock %}

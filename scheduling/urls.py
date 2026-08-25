@@ -45,4 +45,16 @@ urlpatterns = [
         views.schedule_warning_resolve,
         name="schedule_warning_resolve",
     ),
+    path(
+        "schedules/<int:run_id>/sync-preview/",
+        views.schedule_sync_preview,
+        name="schedule_sync_preview",
+    ),
+    path(
+        "schedules/<int:run_id>/sync-confirm/",
+        views.schedule_sync_confirm,
+        name="schedule_sync_confirm",
+    ),
 ]
+
+
