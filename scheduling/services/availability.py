@@ -32,31 +32,53 @@ class LocalAvailabilityProvider:
         start_time: time,
         end_time: time,
     ) -> AvailabilityResult:
-        try:
-            entry = EmployeeAvailability.objects.get(employee=employee, date=shift_date)
-        except EmployeeAvailability.DoesNotExist:
+        entries = list(EmployeeAvailability.objects.filter(employee=employee, date=shift_date))
+        if not entries:
             return AvailabilityResult(
                 False,
                 AvailabilityType.UNKNOWN,
                 ("Availability is unknown for this date.",),
             )
 
-        if entry.availability_type == AvailabilityType.AVAILABLE_ALL_DAY:
-            return AvailabilityResult(True, entry.availability_type, ("Available all day.",))
-        if entry.availability_type == AvailabilityType.AVAILABLE_WINDOW:
-            if entry.start_time <= start_time and entry.end_time >= end_time:
-                return AvailabilityResult(
-                    True,
-                    entry.availability_type,
-                    (f"Available from {entry.start_time:%H:%M} to {entry.end_time:%H:%M}.",),
-                )
+        if any(entry.availability_type == AvailabilityType.AVAILABLE_ALL_DAY for entry in entries):
+            return AvailabilityResult(
+                True, AvailabilityType.AVAILABLE_ALL_DAY, ("Available all day.",)
+            )
+
+        window_entries = [
+            e for e in entries if e.availability_type == AvailabilityType.AVAILABLE_WINDOW
+        ]
+        for entry in window_entries:
+            if entry.start_time and entry.end_time:
+                if entry.start_time <= start_time and entry.end_time >= end_time:
+                    return AvailabilityResult(
+                        True,
+                        entry.availability_type,
+                        (
+                            f"Available from {entry.start_time:%H:%M} to {entry.end_time:%H:%M}.",
+                        ),
+                    )
+
+        if any(entry.availability_type == AvailabilityType.UNAVAILABLE for entry in entries):
+            return AvailabilityResult(
+                False, AvailabilityType.UNAVAILABLE, ("Marked unavailable.",)
+            )
+
+        if window_entries:
+            windows_str = ", ".join(
+                f"{e.start_time:%H:%M}–{e.end_time:%H:%M}"
+                for e in window_entries
+                if e.start_time and e.end_time
+            )
             return AvailabilityResult(
                 False,
-                entry.availability_type,
-                (f"Available only from {entry.start_time:%H:%M} to {entry.end_time:%H:%M}.",),
+                AvailabilityType.AVAILABLE_WINDOW,
+                (
+                    f"Shift window {start_time:%H:%M}–{end_time:%H:%M} is not "
+                    f"fully covered by available window(s): {windows_str}.",
+                ),
             )
-        if entry.availability_type == AvailabilityType.UNAVAILABLE:
-            return AvailabilityResult(False, entry.availability_type, ("Marked unavailable.",))
+
         return AvailabilityResult(
             False,
             AvailabilityType.UNKNOWN,

@@ -3,9 +3,10 @@
 Handles availability fetching, completeness, and audit tracking.
 """
 
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time, timedelta
 
 from django.db import transaction
 from django.utils import timezone
@@ -134,10 +135,10 @@ class SquareAvailabilitySyncService:
         sync_run.provider = provider_used
         sync_run.records_received = len(records)
 
-        # Build lookup map: (employee_name, record_date) -> record
-        record_map: dict[tuple[str, date], NormalizedAvailabilityRecord] = {
-            (rec.employee_name.lower(), rec.date): rec for rec in records
-        }
+        # Build lookup map: (employee_name, record_date) -> list[NormalizedAvailabilityRecord]
+        record_map: dict[tuple[str, date], list[NormalizedAvailabilityRecord]] = defaultdict(list)
+        for rec in records:
+            record_map[(rec.employee_name.lower(), rec.date)].append(rec)
 
         # Resolve live event dates if not provided
         if not event_dates:
@@ -147,36 +148,99 @@ class SquareAvailabilitySyncService:
                 .distinct()
                 .order_by("date")
             )
+            if not event_dates:
+                curr = start_date
+                while curr <= end_date:
+                    event_dates.append(curr)
+                    curr += timedelta(days=1)
 
         total_combinations = len(active_employees) * len(event_dates)
-        known_cnt = 0
+        all_day_cnt = 0
+        window_cnt = 0
+        unavailable_cnt = 0
         unknown_cnt = 0
 
         matrix_cells: list[AvailabilityMatrixCell] = []
 
+        # Upsert live availability into EmployeeAvailability model table
+        from scheduling.models import AvailabilityType, EmployeeAvailability
+        from scheduling.services.availability import LocalAvailabilityProvider
+
         for emp in active_employees:
             for ed in event_dates:
-                rec = record_map.get((emp.display_name.lower(), ed))
-                if rec and rec.state != AvailabilityState.UNKNOWN:
-                    known_cnt += 1
-                    is_known = True
-                    state_disp = rec.state.name if hasattr(rec.state, "name") else str(rec.state)
-                else:
+                EmployeeAvailability.objects.filter(employee=emp, date=ed).delete()
+                recs = record_map.get((emp.display_name.lower(), ed), [])
+
+                if not recs:
                     unknown_cnt += 1
                     is_known = False
                     state_disp = "UNKNOWN"
-
-                matrix_cells.append(
-                    AvailabilityMatrixCell(
-                        employee_name=emp.display_name,
-                        event_date=ed,
-                        record=rec,
-                        is_known=is_known,
-                        state_display=state_disp,
+                    EmployeeAvailability.objects.create(
+                        employee=emp,
+                        date=ed,
+                        availability_type=AvailabilityType.UNKNOWN,
+                        source="LIVE_SQUARE_PRODUCTION",
                     )
-                )
+                    matrix_cells.append(
+                        AvailabilityMatrixCell(
+                            employee_name=emp.display_name,
+                            event_date=ed,
+                            record=None,
+                            is_known=False,
+                            state_display="UNKNOWN",
+                        )
+                    )
+                else:
+                    for rec in recs:
+                        if rec.state == AvailabilityState.AVAILABLE_ALL_DAY:
+                            all_day_cnt += 1
+                            is_known = True
+                            state_disp = "AVAILABLE_ALL_DAY"
+                            av_type = AvailabilityType.AVAILABLE_ALL_DAY
+                            st, et = None, None
+                        elif rec.state == AvailabilityState.AVAILABLE_WINDOW:
+                            window_cnt += 1
+                            is_known = True
+                            if rec.start_time and rec.end_time:
+                                state_disp = f"{rec.start_time:%H:%M}–{rec.end_time:%H:%M}"
+                            else:
+                                state_disp = "AVAILABLE_WINDOW"
+                            av_type = AvailabilityType.AVAILABLE_WINDOW
+                            st, et = rec.start_time, rec.end_time
+                        elif rec.state == AvailabilityState.UNAVAILABLE:
+                            unavailable_cnt += 1
+                            is_known = True
+                            state_disp = "UNAVAILABLE"
+                            av_type = AvailabilityType.UNAVAILABLE
+                            st, et = None, None
+                        else:
+                            unknown_cnt += 1
+                            is_known = False
+                            state_disp = "UNKNOWN"
+                            av_type = AvailabilityType.UNKNOWN
+                            st, et = None, None
+
+                        EmployeeAvailability.objects.create(
+                            employee=emp,
+                            date=ed,
+                            availability_type=av_type,
+                            start_time=st,
+                            end_time=et,
+                            source="LIVE_SQUARE_PRODUCTION",
+                        )
+
+                        matrix_cells.append(
+                            AvailabilityMatrixCell(
+                                employee_name=emp.display_name,
+                                event_date=ed,
+                                record=rec,
+                                is_known=is_known,
+                                state_display=state_disp,
+                            )
+                        )
 
         sync_run.unknown_count = unknown_cnt
+        known_cnt = all_day_cnt + window_cnt + unavailable_cnt
         completeness_pct = (
             round((known_cnt / total_combinations) * 100.0, 1) if total_combinations > 0 else 100.0
         )
@@ -184,83 +248,60 @@ class SquareAvailabilitySyncService:
         sync_run.completed_at = timezone.now()
         sync_run.save()
 
-        # Upsert live availability into EmployeeAvailability model table
-        from scheduling.models import AvailabilityType, EmployeeAvailability
-
-        for emp in active_employees:
-            for ed in event_dates:
-                rec = record_map.get((emp.display_name.lower(), ed))
-                av_type = AvailabilityType.AVAILABLE_ALL_DAY
-                st = None
-                et = None
-                if rec:
-                    if rec.state == AvailabilityState.AVAILABLE_ALL_DAY:
-                        av_type = AvailabilityType.AVAILABLE_ALL_DAY
-                    elif rec.state == AvailabilityState.AVAILABLE_WINDOW:
-                        av_type = AvailabilityType.AVAILABLE_WINDOW
-                        st = rec.start_time
-                        et = rec.end_time
-                    elif rec.state == AvailabilityState.UNAVAILABLE:
-                        av_type = AvailabilityType.UNAVAILABLE
-                    else:
-                        av_type = AvailabilityType.UNKNOWN
-                else:
-                    av_type = AvailabilityType.UNKNOWN
-
-                EmployeeAvailability.objects.update_or_create(
-                    employee=emp,
-                    date=ed,
-                    defaults={
-                        "availability_type": av_type,
-                        "start_time": st,
-                        "end_time": et,
-                        "source": "LIVE_SQUARE_PRODUCTION",
-                    },
-                )
-
-        # Compute role-aware capacity for each event date
+        # Compute slot-aware role capacity for each event date
+        local_av_provider = LocalAvailabilityProvider()
         capacity_summaries: list[DateCapacitySummary] = []
         for ed in event_dates:
             show = Show.objects.filter(date=ed, active=True).first()
             show_title = show.title if show else "Show Date"
 
-            # Count available staff by role capability
-            av_servers = 0
-            av_bartenders = 0
-            av_bussers = 0
-            av_fifty = 0
+            lead_servers = 0
+            servers_17_23 = 0
+            on_call_servers = 0
+            bartenders_15_21 = 0
+            on_call_bartenders = 0
+            bussers_18_2130 = 0
+            fifty_fifty_18_2130 = 0
 
             for emp in active_employees:
-                rec = record_map.get((emp.display_name.lower(), ed))
-                is_av = rec and rec.state in (
-                    AvailabilityState.AVAILABLE_ALL_DAY,
-                    AvailabilityState.AVAILABLE_WINDOW,
-                )
-                if is_av:
-                    roles = set(
-                        EmployeeRole.objects.filter(employee=emp, active=True).values_list(
-                            "role__name", flat=True
-                        )
+                roles = set(
+                    EmployeeRole.objects.filter(employee=emp, active=True).values_list(
+                        "role__name", flat=True
                     )
-                    if "Server" in roles:
-                        av_servers += 1
-                    if "Bartender" in roles:
-                        av_bartenders += 1
-                    if "Busser" in roles:
-                        av_bussers += 1
-                    if "50/50" in roles:
-                        av_fifty += 1
+                )
 
-            potential_shortage = (av_servers < 4) or (av_bartenders < 2) or (av_bussers < 1)
+                if "Server" in roles:
+                    if local_av_provider.check(emp, ed, time(15, 0), time(21, 30)).available:
+                        lead_servers += 1
+                    if local_av_provider.check(emp, ed, time(17, 0), time(23, 0)).available:
+                        servers_17_23 += 1
+                    if local_av_provider.check(emp, ed, time(17, 30), time(23, 0)).available:
+                        on_call_servers += 1
+
+                if "Bartender" in roles:
+                    if local_av_provider.check(emp, ed, time(15, 0), time(21, 0)).available:
+                        bartenders_15_21 += 1
+                    if local_av_provider.check(emp, ed, time(17, 30), time(23, 0)).available:
+                        on_call_bartenders += 1
+
+                if "Busser" in roles:
+                    if local_av_provider.check(emp, ed, time(18, 0), time(21, 30)).available:
+                        bussers_18_2130 += 1
+
+                if "50/50" in roles:
+                    if local_av_provider.check(emp, ed, time(18, 0), time(21, 30)).available:
+                        fifty_fifty_18_2130 += 1
+
+            potential_shortage = (servers_17_23 < 2) or (bartenders_15_21 < 1)
 
             capacity_summaries.append(
                 DateCapacitySummary(
                     event_date=ed,
                     show_title=show_title,
-                    available_servers=av_servers,
-                    available_bartenders=av_bartenders,
-                    available_bussers=av_bussers,
-                    available_fifty_fifty=av_fifty,
+                    available_servers=servers_17_23,
+                    available_bartenders=bartenders_15_21,
+                    available_bussers=bussers_18_2130,
+                    available_fifty_fifty=fifty_fifty_18_2130,
                     potential_shortage=potential_shortage,
                 )
             )

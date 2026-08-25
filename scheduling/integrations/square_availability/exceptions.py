@@ -15,3 +15,7 @@ class SquareAvailabilityBrowserError(SquareAvailabilityError):
 
 class SquareAvailabilityCompletenessError(SquareAvailabilityError):
     """Raised when availability completeness check fails."""
+
+
+class AvailabilityNormalizationSuspectError(SquareAvailabilityError):
+    """Raised when availability normalization yields suspect results."""

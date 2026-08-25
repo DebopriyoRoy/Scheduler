@@ -422,12 +422,6 @@ class EmployeeAvailability(models.Model):
 
     class Meta:
         ordering = ["date", "employee__display_name"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["employee", "date"],
-                name="unique_employee_availability_date",
-            )
-        ]
 
     def __str__(self) -> str:
         return f"{self.employee} - {self.date:%Y-%m-%d}: {self.get_availability_type_display()}"
