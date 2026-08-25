@@ -216,6 +216,45 @@ class CalendarSyncRun(models.Model):
         return f"CalendarSyncRun #{self.id} ({self.provider}) - {self.status}"
 
 
+class SquareAvailabilitySyncRun(models.Model):
+    class EnvironmentChoices(models.TextChoices):
+        SANDBOX = "sandbox", "Sandbox"
+        PRODUCTION = "production", "Production"
+
+    class SyncStatus(models.TextChoices):
+        RUNNING = "RUNNING", "Running"
+        SUCCESS = "SUCCESS", "Success"
+        PARTIAL = "PARTIAL", "Partial Completeness"
+        FAILED = "FAILED", "Failed"
+
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    environment = models.CharField(
+        max_length=20, choices=EnvironmentChoices.choices, default=EnvironmentChoices.PRODUCTION
+    )
+    provider = models.CharField(max_length=64, default="STRUCTURED_DASHBOARD_REQUEST")
+    start_date = models.DateField()
+    end_date = models.DateField()
+
+    employees_requested = models.PositiveIntegerField(default=17)
+    employees_found = models.PositiveIntegerField(default=0)
+    records_received = models.PositiveIntegerField(default=0)
+    records_created = models.PositiveIntegerField(default=0)
+    records_updated = models.PositiveIntegerField(default=0)
+    records_unchanged = models.PositiveIntegerField(default=0)
+    unknown_count = models.PositiveIntegerField(default=0)
+
+    status = models.CharField(max_length=32, choices=SyncStatus.choices, default=SyncStatus.RUNNING)
+    error_message = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self) -> str:
+        return f"SquareAvailabilitySyncRun #{self.id} ({self.environment}) - {self.status}"
+
+
 class Show(models.Model):
     class Source(models.TextChoices):
         MANUAL = "MANUAL", "Manual"

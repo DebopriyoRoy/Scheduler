@@ -14,6 +14,11 @@ urlpatterns = [
     path("shows/import/", views.show_import, name="show_import"),
     path("shows/calendar-sync/", views.calendar_sync, name="calendar_sync"),
     path("availability/", views.availability, name="availability"),
+    path(
+        "availability/square-sync/",
+        views.square_availability_sync,
+        name="square_availability_sync",
+    ),
     path("availability/template/", views.availability_template, name="availability_template"),
     path("configuration/rotations/", views.rotation_configuration, name="rotation_configuration"),
     path("schedules/", views.schedule_list, name="schedule_list"),

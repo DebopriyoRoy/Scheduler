@@ -863,3 +863,49 @@ def calendar_sync(request):
         },
     )
 
+
+@login_required
+def square_availability_sync(request):
+    """Management view for inspecting and validating Square Production employee availability."""
+    from datetime import date
+
+    from scheduling.integrations.square_availability.service import SquareAvailabilitySyncService
+    from scheduling.models import SquareAvailabilitySyncRun
+
+    start_date_str = request.GET.get("start") or request.POST.get("start") or "2026-09-07"
+    end_date_str = request.GET.get("end") or request.POST.get("end") or "2026-10-03"
+
+    try:
+        start_d = date.fromisoformat(start_date_str)
+        end_d = date.fromisoformat(end_date_str)
+    except ValueError:
+        start_d = date(2026, 9, 7)
+        end_d = date(2026, 10, 3)
+
+    service = SquareAvailabilitySyncService()
+    analysis = service.execute_sync(start_d, end_d)
+
+    if request.method == "POST":
+        messages.success(
+            request,
+            f"Square Production Availability Refreshed ({analysis.sync_run.provider}): "
+            f"{analysis.known_combinations}/{analysis.total_combinations} Known "
+            f"({analysis.completeness_pct}% Completeness).",
+        )
+
+    sync_runs = SquareAvailabilitySyncRun.objects.all()[:10]
+    latest_run = sync_runs.first()
+
+    return render(
+        request,
+        "scheduling/square_availability_sync.html",
+        {
+            "start_date": start_d.isoformat(),
+            "end_date": end_d.isoformat(),
+            "sync_runs": sync_runs,
+            "latest_run": latest_run,
+            "analysis": analysis,
+        },
+    )
+
+
