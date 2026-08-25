@@ -1,8 +1,11 @@
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import date, datetime, time, timedelta
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
 from scheduling.models import AvailabilityType, Employee, EmployeeAvailability
+
+ST_JOHNS_TZ = ZoneInfo("America/St_Johns")
 
 
 @dataclass(frozen=True)
@@ -45,12 +48,33 @@ class LocalAvailabilityProvider:
                 True, AvailabilityType.AVAILABLE_ALL_DAY, ("Available all day.",)
             )
 
+        # Build timezone-aware shift datetimes in America/St_Johns
+        s_start_dt = datetime.combine(shift_date, start_time, tzinfo=ST_JOHNS_TZ)
+        if end_time <= start_time:
+            s_end_dt = datetime.combine(
+                shift_date + timedelta(days=1), end_time, tzinfo=ST_JOHNS_TZ
+            )
+        else:
+            s_end_dt = datetime.combine(shift_date, end_time, tzinfo=ST_JOHNS_TZ)
+
         window_entries = [
             e for e in entries if e.availability_type == AvailabilityType.AVAILABLE_WINDOW
         ]
         for entry in window_entries:
             if entry.start_time and entry.end_time:
-                if entry.start_time <= start_time and entry.end_time >= end_time:
+                a_start_dt = datetime.combine(
+                    shift_date, entry.start_time, tzinfo=ST_JOHNS_TZ
+                )
+                if entry.end_time <= entry.start_time:
+                    a_end_dt = datetime.combine(
+                        shift_date + timedelta(days=1), entry.end_time, tzinfo=ST_JOHNS_TZ
+                    )
+                else:
+                    a_end_dt = datetime.combine(
+                        shift_date, entry.end_time, tzinfo=ST_JOHNS_TZ
+                    )
+
+                if a_start_dt <= s_start_dt and a_end_dt >= s_end_dt:
                     return AvailabilityResult(
                         True,
                         entry.availability_type,

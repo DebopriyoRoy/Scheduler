@@ -101,6 +101,10 @@ class WarningType(models.TextChoices):
         "EVENT_STAFFING_REVIEW_REQUIRED",
         "Event staffing review required",
     )
+    PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED = (
+        "PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED",
+        "Private event staffing review required",
+    )
 
 
 class Employee(models.Model):
@@ -247,6 +251,17 @@ class SquareAvailabilitySyncRun(models.Model):
     records_updated = models.PositiveIntegerField(default=0)
     records_unchanged = models.PositiveIntegerField(default=0)
     unknown_count = models.PositiveIntegerField(default=0)
+
+    total_employee_date_combinations = models.PositiveIntegerField(default=0)
+    known_employee_date_combinations = models.PositiveIntegerField(default=0)
+    unknown_employee_date_combinations = models.PositiveIntegerField(default=0)
+    available_window_combinations = models.PositiveIntegerField(default=0)
+    available_window_records = models.PositiveIntegerField(default=0)
+    all_day_combinations = models.PositiveIntegerField(default=0)
+    unavailable_combinations = models.PositiveIntegerField(default=0)
+    completeness_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0.00")
+    )
 
     status = models.CharField(max_length=32, choices=SyncStatus.choices, default=SyncStatus.RUNNING)
     error_message = models.TextField(blank=True)

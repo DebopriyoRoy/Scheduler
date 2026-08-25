@@ -262,3 +262,81 @@ def test_no_availability_bartender_is_ineligible():
     res = local_provider.check(svitlana, date(2026, 9, 12), time(17, 30), time(23, 0))
     assert not res.available
     assert res.availability_type == AvailabilityType.UNKNOWN
+
+
+@pytest.mark.django_db
+def test_yana_midnight_ending_window_1430_0000():
+    """Verify Yana's 14:30-00:00 window covers Lead Server, Server, On-Call Server, 50/50."""
+    service = SquareAvailabilitySyncService()
+    service.execute_sync(date(2026, 9, 7), date(2026, 9, 13))
+
+    yana = Employee.objects.get(display_name="Yana")
+    local_provider = LocalAvailabilityProvider()
+
+    # Thursday 2026-09-10 (Yana Mon-Thu is 14:30-00:00)
+    # Lead Server 15:00-21:30 -> ELIGIBLE
+    res_lead = local_provider.check(yana, date(2026, 9, 10), time(15, 0), time(21, 30))
+    assert res_lead.available
+
+    # Server 17:00-23:00 -> ELIGIBLE
+    res_srv = local_provider.check(yana, date(2026, 9, 10), time(17, 0), time(23, 0))
+    assert res_srv.available
+
+    # On-Call Server 17:30-23:00 -> ELIGIBLE
+    res_oncall = local_provider.check(yana, date(2026, 9, 10), time(17, 30), time(23, 0))
+    assert res_oncall.available
+
+    # 50/50 18:00-21:30 -> ELIGIBLE
+    res_5050 = local_provider.check(yana, date(2026, 9, 10), time(18, 0), time(21, 30))
+    assert res_5050.available
+
+
+@pytest.mark.django_db
+def test_genuinely_overnight_shift_timezone_aware():
+    """Verify overnight shift (22:00-04:00) is covered by window (18:00-06:00)."""
+    local_provider = LocalAvailabilityProvider()
+    emp = Employee.objects.first()
+
+    from scheduling.models import AvailabilityType, EmployeeAvailability
+    EmployeeAvailability.objects.create(
+        employee=emp,
+        date=date(2026, 9, 12),
+        availability_type=AvailabilityType.AVAILABLE_WINDOW,
+        start_time=time(18, 0),
+        end_time=time(6, 0),
+    )
+
+    res = local_provider.check(emp, date(2026, 9, 12), time(22, 0), time(4, 0))
+    assert res.available
+    assert res.availability_type == AvailabilityType.AVAILABLE_WINDOW
+
+
+@pytest.mark.django_db
+def test_completeness_sanity_check_13_dates():
+    """Verify exact sanity check metric breakdown across 17 staff and 13 event dates."""
+    service = SquareAvailabilitySyncService()
+    event_dates = [
+        date(2026, 9, 10),
+        date(2026, 9, 11),
+        date(2026, 9, 12),
+        date(2026, 9, 17),
+        date(2026, 9, 18),
+        date(2026, 9, 19),
+        date(2026, 9, 21),
+        date(2026, 9, 23),
+        date(2026, 9, 25),
+        date(2026, 9, 26),
+        date(2026, 9, 30),
+        date(2026, 10, 2),
+        date(2026, 10, 3),
+    ]
+    summary = service.execute_sync(date(2026, 9, 7), date(2026, 10, 3), event_dates=event_dates)
+    run = summary.sync_run
+
+    assert run.total_employee_date_combinations == 221
+    assert run.known_employee_date_combinations == 116
+    assert run.unknown_employee_date_combinations == 105
+    assert run.available_window_combinations == 109
+    assert run.available_window_records == 130
+    assert run.all_day_combinations == 7
+    assert float(run.completeness_percentage) == 52.5

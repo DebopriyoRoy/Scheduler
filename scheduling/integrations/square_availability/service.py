@@ -7,6 +7,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, time, timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -156,7 +157,8 @@ class SquareAvailabilitySyncService:
 
         total_combinations = len(active_employees) * len(event_dates)
         all_day_cnt = 0
-        window_cnt = 0
+        window_comb_cnt = 0
+        window_rec_cnt = 0
         unavailable_cnt = 0
         unknown_cnt = 0
 
@@ -173,8 +175,6 @@ class SquareAvailabilitySyncService:
 
                 if not recs:
                     unknown_cnt += 1
-                    is_known = False
-                    state_disp = "UNKNOWN"
                     EmployeeAvailability.objects.create(
                         employee=emp,
                         date=ed,
@@ -191,34 +191,41 @@ class SquareAvailabilitySyncService:
                         )
                     )
                 else:
+                    has_all_day = any(r.state == AvailabilityState.AVAILABLE_ALL_DAY for r in recs)
+                    has_window = any(r.state == AvailabilityState.AVAILABLE_WINDOW for r in recs)
+                    has_unavail = any(r.state == AvailabilityState.UNAVAILABLE for r in recs)
+
+                    if has_all_day:
+                        all_day_cnt += 1
+                    elif has_window:
+                        window_comb_cnt += 1
+                        window_rec_cnt += len(recs)
+                    elif has_unavail:
+                        unavailable_cnt += 1
+                    else:
+                        unknown_cnt += 1
+
                     for rec in recs:
+                        is_known = rec.state != AvailabilityState.UNKNOWN
                         if rec.state == AvailabilityState.AVAILABLE_ALL_DAY:
-                            all_day_cnt += 1
-                            is_known = True
-                            state_disp = "AVAILABLE_ALL_DAY"
                             av_type = AvailabilityType.AVAILABLE_ALL_DAY
                             st, et = None, None
+                            state_disp = "AVAILABLE_ALL_DAY"
                         elif rec.state == AvailabilityState.AVAILABLE_WINDOW:
-                            window_cnt += 1
-                            is_known = True
+                            av_type = AvailabilityType.AVAILABLE_WINDOW
+                            st, et = rec.start_time, rec.end_time
                             if rec.start_time and rec.end_time:
                                 state_disp = f"{rec.start_time:%H:%M}–{rec.end_time:%H:%M}"
                             else:
                                 state_disp = "AVAILABLE_WINDOW"
-                            av_type = AvailabilityType.AVAILABLE_WINDOW
-                            st, et = rec.start_time, rec.end_time
                         elif rec.state == AvailabilityState.UNAVAILABLE:
-                            unavailable_cnt += 1
-                            is_known = True
-                            state_disp = "UNAVAILABLE"
                             av_type = AvailabilityType.UNAVAILABLE
                             st, et = None, None
+                            state_disp = "UNAVAILABLE"
                         else:
-                            unknown_cnt += 1
-                            is_known = False
-                            state_disp = "UNKNOWN"
                             av_type = AvailabilityType.UNKNOWN
                             st, et = None, None
+                            state_disp = "UNKNOWN"
 
                         EmployeeAvailability.objects.create(
                             employee=emp,
@@ -239,11 +246,23 @@ class SquareAvailabilitySyncService:
                             )
                         )
 
+        known_combinations = all_day_cnt + window_comb_cnt + unavailable_cnt
+        if total_combinations > 0:
+            pct_val = round((known_combinations / total_combinations) * 100.0, 1)
+            completeness_pct = Decimal(str(pct_val))
+        else:
+            completeness_pct = Decimal("100.0")
+
+        sync_run.total_employee_date_combinations = total_combinations
+        sync_run.known_employee_date_combinations = known_combinations
+        sync_run.unknown_employee_date_combinations = unknown_cnt
+        sync_run.available_window_combinations = window_comb_cnt
+        sync_run.available_window_records = window_rec_cnt
+        sync_run.all_day_combinations = all_day_cnt
+        sync_run.unavailable_combinations = unavailable_cnt
+        sync_run.completeness_percentage = completeness_pct
+
         sync_run.unknown_count = unknown_cnt
-        known_cnt = all_day_cnt + window_cnt + unavailable_cnt
-        completeness_pct = (
-            round((known_cnt / total_combinations) * 100.0, 1) if total_combinations > 0 else 100.0
-        )
         sync_run.status = "SUCCESS" if unknown_cnt == 0 else "PARTIAL"
         sync_run.completed_at = timezone.now()
         sync_run.save()
@@ -324,7 +343,7 @@ class SquareAvailabilitySyncService:
             total_requested=len(ROSTER_EMPLOYEE_NAMES),
             total_found=len(active_employees),
             total_combinations=total_combinations,
-            known_combinations=known_cnt,
+            known_combinations=known_combinations,
             unknown_combinations=unknown_cnt,
             completeness_pct=completeness_pct,
             matrix_cells=tuple(matrix_cells),

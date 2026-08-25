@@ -154,6 +154,18 @@ class SchedulingEngine:
                 )
                 continue
 
+            is_private = "private" in show.title.lower() and not is_offsite
+            if is_private:
+                self._warning(
+                    schedule_run,
+                    show,
+                    WarningType.PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED,
+                    WarningSeverity.WARNING,
+                    "PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED: Private event requires "
+                    "explicit management approval before applying standard staffing profile.",
+                )
+                continue
+
             requirements, outside_rules = staffing_requirements_for(show)
             if outside_rules:
                 self._warning(

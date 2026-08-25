@@ -25,33 +25,47 @@ from scheduling.models import (
 from scheduling.services.engine import SchedulingEngine
 
 MOCK_EVENT_DATES = [
+    date(2026, 9, 10),
+    date(2026, 9, 11),
     date(2026, 9, 12),
-    date(2026, 9, 15),
+    date(2026, 9, 17),
     date(2026, 9, 18),
     date(2026, 9, 19),
     date(2026, 9, 21),
-    date(2026, 9, 22),
-    date(2026, 9, 24),
+    date(2026, 9, 23),
     date(2026, 9, 25),
     date(2026, 9, 26),
-    date(2026, 9, 29),
-    date(2026, 10, 1),
+    date(2026, 9, 30),
     date(2026, 10, 2),
     date(2026, 10, 3),
 ]
+
+TITLES_MAP = {
+    date(2026, 9, 10): "(It's a Nice Day for) Dwight's Wedding!! - Fall 2026",
+    date(2026, 9, 11): "(It's a Nice Day for) Dwight's Wedding!! - Fall 2026",
+    date(2026, 9, 12): "Forever Country...in the Key of Spirit!! - Fall 2026",
+    date(2026, 9, 17): "(It's a Nice Day for) Dwight's Wedding!! - Fall 2026",
+    date(2026, 9, 18): "Forever Country...in the Key of Spirit!! - Fall 2026",
+    date(2026, 9, 19): "Shift Happens!",
+    date(2026, 9, 21): "Private - Offsite Event!",
+    date(2026, 9, 23): "(It's a Nice Day for) Dwight's Wedding!! - Fall 2026",
+    date(2026, 9, 25): "Forever Country...in the Key of Spirit!! - Fall 2026",
+    date(2026, 9, 26): "HOME SWEET HOME-I-CIDE!",
+    date(2026, 9, 30): "(It's a Nice Day for) Dwight's Wedding!! - Fall 2026",
+    date(2026, 10, 2): "(It's a Nice Day for) Dwight's Wedding!! - Fall 2026",
+    date(2026, 10, 3): "Private Shift Happens on 03 October 2026",
+}
 
 MOCK_OCCURRENCES = [
     NormalizedEventOccurrence(
         external_event_id=f"evt-{d}",
         external_occurrence_id=f"occ-{d}",
-        title="2026-09-21 Private - Offsite Event!" if d == date(2026, 9, 21) else f"Show {d}",
-        full_title="2026-09-21 Private - Offsite Event!"
-        if d == date(2026, 9, 21)
-        else f"Show {d}",
+        title=TITLES_MAP[d],
+        full_title=TITLES_MAP[d],
         date=d,
-        start_time=time(19, 0),
+        start_time=time(18, 30),
         end_time=time(22, 30),
-        start_datetime=datetime.combine(d, time(19, 0)),
+        start_datetime=datetime.combine(d, time(18, 30)),
         end_datetime=datetime.combine(d, time(22, 30)),
         venue="Offsite" if d == date(2026, 9, 21) else "Theatre Gower",
     )
@@ -168,7 +182,7 @@ def test_offsite_event_handled_separately():
 
 @pytest.mark.django_db
 def test_private_theatre_event_handled():
-    """Verify Oct 3 Private Theatre event at Theatre Gower receives standard Theatre staffing."""
+    """Verify Oct 3 Private event emits review warning and holds 0 assignments."""
     cal_service, avail_service = get_mock_sync_services()
     cal_service.execute_sync(date(2026, 9, 7), date(2026, 10, 3))
     avail_service.execute_sync(date(2026, 9, 7), date(2026, 10, 3))
@@ -180,7 +194,14 @@ def test_private_theatre_event_handled():
     assert private_show is not None
 
     private_assignments = ScheduleAssignment.objects.filter(schedule_run=run, show=private_show)
-    assert private_assignments.count() in {7, 8}
+    assert private_assignments.count() == 0
+
+    private_warning = run.warnings.filter(
+        show=private_show,
+        warning_type="PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED",
+    ).first()
+    assert private_warning is not None
+    assert "PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED" in private_warning.message
 
 
 @pytest.mark.django_db

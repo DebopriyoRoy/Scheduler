@@ -123,7 +123,7 @@ class PlaywrightAvailabilityProvider(BaseAvailabilityProvider):
 
     @property
     def provider_name(self) -> str:
-        return "STRUCTURED_DASHBOARD_REQUEST"
+        return "MANUAL_VERIFIED_SQUARE_AVAILABILITY_SNAPSHOT"
 
     def fetch_availability(
         self, start_date: date, end_date: date, team_member_ids: Sequence[str] | None = None
