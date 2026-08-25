@@ -95,3 +95,17 @@ class EligibilityService:
             reasons.append("Employee is already assigned another role for this show.")
 
         return EligibilityResult(not reasons, tuple(reasons or ["All hard constraints passed."]))
+
+    def evaluate_simple(self, employee: Employee, show: Show) -> bool:
+        """Fast check for historical eligibility during opportunity rate calculation."""
+        if not employee.active or employee.excluded_from_automatic_scheduling:
+            return False
+        if employee.display_name.strip().casefold() in EXCLUDED_MANAGER_NAMES:
+            return False
+        availability = self.availability_provider.check(
+            employee,
+            show.date,
+            show.start_time,
+            show.end_time,
+        )
+        return availability.available

@@ -105,6 +105,30 @@ class WarningType(models.TextChoices):
         "PRIVATE_EVENT_STAFFING_REVIEW_REQUIRED",
         "Private event staffing review required",
     )
+    OPPORTUNITY_IMBALANCE = (
+        "OPPORTUNITY_IMBALANCE",
+        "Opportunity distribution imbalance",
+    )
+    ON_CALL_IMBALANCE = (
+        "ON_CALL_IMBALANCE",
+        "On-call burden imbalance",
+    )
+    WEEKEND_IMBALANCE = (
+        "WEEKEND_IMBALANCE",
+        "Weekend distribution imbalance",
+    )
+    TARGET_HOURS_SHORTFALL = (
+        "TARGET_HOURS_SHORTFALL",
+        "Target hours shortfall",
+    )
+    EXCESSIVE_CONSECUTIVE_SHIFTS = (
+        "EXCESSIVE_CONSECUTIVE_SHIFTS",
+        "Excessive consecutive shifts",
+    )
+    ACTUAL_TIMECARD_HISTORY_NOT_AVAILABLE = (
+        "ACTUAL_TIMECARD_HISTORY_NOT_AVAILABLE",
+        "Actual timecard history not available",
+    )
 
 
 class Employee(models.Model):
@@ -499,6 +523,13 @@ class ScheduleRun(models.Model):
         on_delete=models.SET_NULL,
         related_name="schedule_runs",
     )
+    fairness_config = models.ForeignKey(
+        "SchedulingFairnessConfig",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="schedule_runs",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         blank=True,
@@ -859,4 +890,222 @@ class SquareSyncAuditLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.created_at:%Y-%m-%d %H:%M:%S} - {self.action_type} ({self.environment})"
+
+
+class SchedulingFairnessConfig(models.Model):
+    name = models.CharField(max_length=100, default="Default Spirit Fairness Config")
+    active = models.BooleanField(default=True)
+
+    # Confirmed Ranking Weights (must sum to 1.00)
+    opportunity_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.30")
+    )
+    hours_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.25")
+    )
+    role_opportunity_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.10")
+    )
+    confirmed_shift_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.10")
+    )
+    weekend_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.08")
+    )
+    rest_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.05")
+    )
+    reliability_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.05")
+    )
+    performance_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.04")
+    )
+    role_fit_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.03")
+    )
+
+    # On-Call Ranking Weights (must sum to 1.00)
+    on_call_count_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.40")
+    )
+    on_call_hours_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.20")
+    )
+    on_call_opportunity_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.15")
+    )
+    on_call_confirmed_workload_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.10")
+    )
+    on_call_weekend_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.05")
+    )
+    on_call_reliability_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.05")
+    )
+    on_call_role_fit_weight = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.05")
+    )
+
+    # History Windows (Days)
+    recent_hours_window_days = models.PositiveIntegerField(default=28)
+    confirmed_shift_window_days = models.PositiveIntegerField(default=28)
+    on_call_window_days = models.PositiveIntegerField(default=28)
+    weekend_window_days = models.PositiveIntegerField(default=56)
+
+    # Defaults for missing data
+    default_reliability = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.50")
+    )
+    default_performance = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.50")
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-active", "-updated_at"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({'Active' if self.active else 'Inactive'})"
+
+    def clean(self) -> None:
+        super().clean()
+        confirmed_total = (
+            self.opportunity_weight
+            + self.hours_weight
+            + self.role_opportunity_weight
+            + self.confirmed_shift_weight
+            + self.weekend_weight
+            + self.rest_weight
+            + self.reliability_weight
+            + self.performance_weight
+            + self.role_fit_weight
+        )
+        if abs(confirmed_total - Decimal("1.00")) > Decimal("0.001"):
+            raise ValidationError(
+                {
+                    "opportunity_weight": (
+                        f"Confirmed ranking weights must sum to 1.00 (currently {confirmed_total})."
+                    )
+                }
+            )
+        on_call_total = (
+            self.on_call_count_weight
+            + self.on_call_hours_weight
+            + self.on_call_opportunity_weight
+            + self.on_call_confirmed_workload_weight
+            + self.on_call_weekend_weight
+            + self.on_call_reliability_weight
+            + self.on_call_role_fit_weight
+        )
+        if abs(on_call_total - Decimal("1.00")) > Decimal("0.001"):
+            raise ValidationError(
+                {
+                    "on_call_count_weight": (
+                        f"On-call ranking weights must sum to 1.00 (currently {on_call_total})."
+                    )
+                }
+            )
+
+    @classmethod
+    def get_active_config(cls) -> "SchedulingFairnessConfig":
+        config = cls.objects.filter(active=True).first()
+        if not config:
+            config = cls.objects.create(name="Default Spirit Fairness Config", active=True)
+        return config
+
+
+class EmployeeSchedulingPreference(models.Model):
+    employee = models.OneToOneField(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="scheduling_preference",
+    )
+    target_hours = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Monthly target confirmed paid hours for Spirit-only priority staff.",
+    )
+    priority_enabled = models.BooleanField(default=True)
+    effective_from = models.DateField(blank=True, null=True)
+    effective_to = models.DateField(blank=True, null=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self) -> str:
+        return f"{self.employee}: Target {self.target_hours or 0} hrs/mo"
+
+
+class SchedulingFairnessSnapshot(models.Model):
+    schedule_run = models.ForeignKey(
+        ScheduleRun,
+        on_delete=models.CASCADE,
+        related_name="fairness_snapshots",
+    )
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="fairness_snapshots",
+    )
+    role = models.ForeignKey(
+        Role,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="fairness_snapshots",
+    )
+    eligible_opportunities = models.PositiveIntegerField(default=0)
+    confirmed_opportunities = models.PositiveIntegerField(default=0)
+    opportunity_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0.00")
+    )
+    recent_actual_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("0.00")
+    )
+    recent_confirmed_shifts = models.PositiveIntegerField(default=0)
+    recent_on_call_assignments = models.PositiveIntegerField(default=0)
+    recent_on_call_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("0.00")
+    )
+    recent_weekend_shifts = models.PositiveIntegerField(default=0)
+    consecutive_nights = models.PositiveIntegerField(default=0)
+    role_opportunities = models.PositiveIntegerField(default=0)
+    target_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, blank=True, null=True
+    )
+    projected_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("0.00")
+    )
+    reliability_score = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.50")
+    )
+    performance_score = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.50")
+    )
+    role_fit_score = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.50")
+    )
+    target_hours_adjustment = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("0.00")
+    )
+    confirmed_fair_score = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal("0.000")
+    )
+    on_call_fair_score = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal("0.000")
+    )
+    selected = models.BooleanField(default=False)
+    selection_reason = models.TextField(blank=True)
+    score_breakdown = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["schedule_run", "employee__display_name"]
+
+    def __str__(self) -> str:
+        return f"{self.employee} - {self.schedule_run}: Score {self.confirmed_fair_score}"
 

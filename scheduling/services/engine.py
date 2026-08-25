@@ -15,6 +15,8 @@ from scheduling.models import (
     ScheduleAssignment,
     ScheduleRun,
     ScheduleRunStatus,
+    SchedulingFairnessConfig,
+    SchedulingFairnessSnapshot,
     SchedulingWarning,
     ShiftTemplate,
     Show,
@@ -23,6 +25,7 @@ from scheduling.models import (
 )
 from scheduling.services.availability import AvailabilityProvider, LocalAvailabilityProvider
 from scheduling.services.eligibility import EXCLUDED_MANAGER_NAMES, EligibilityService
+from scheduling.services.fairness import FairnessService
 from scheduling.services.metrics import EmployeeMetrics, metrics_for_employee
 from scheduling.services.requirements import (
     StaffingRequirement,
@@ -60,11 +63,16 @@ SHORTAGE_TYPES = {
 
 
 class SchedulingEngine:
-    algorithm_version = "phase2-deterministic-v1"
+    algorithm_version = "phase3-fairness-v1"
 
-    def __init__(self, availability_provider: AvailabilityProvider | None = None):
+    def __init__(
+        self,
+        availability_provider: AvailabilityProvider | None = None,
+        fairness_config: SchedulingFairnessConfig | None = None,
+    ):
         self.availability_provider = availability_provider or LocalAvailabilityProvider()
         self.eligibility = EligibilityService(self.availability_provider)
+        self.fairness = FairnessService(config=fairness_config)
 
     @transaction.atomic
     def generate(
@@ -116,6 +124,7 @@ class SchedulingEngine:
                 raise ValidationError("Only a draft schedule can be regenerated.")
             schedule_run.assignments.all().delete()
             schedule_run.warnings.all().delete()
+            schedule_run.fairness_snapshots.all().delete()
             schedule_run.start_date = start_date
             schedule_run.end_date = end_date
             schedule_run.created_by = created_by or schedule_run.created_by
@@ -123,6 +132,7 @@ class SchedulingEngine:
             schedule_run.availability_sync_run = (
                 availability_sync_run or schedule_run.availability_sync_run
             )
+            schedule_run.fairness_config = self.fairness.config
         else:
             schedule_run = ScheduleRun(
                 start_date=start_date,
@@ -130,6 +140,7 @@ class SchedulingEngine:
                 created_by=created_by,
                 calendar_sync_run=calendar_sync_run,
                 availability_sync_run=availability_sync_run,
+                fairness_config=self.fairness.config,
             )
         schedule_run.status = ScheduleRunStatus.GENERATING
         schedule_run.algorithm_version = self.algorithm_version
@@ -203,6 +214,8 @@ class SchedulingEngine:
                         self._assign_fifty_fifty(schedule_run, show, shift_template, rotation)
                     else:
                         self._assign_ranked(schedule_run, show, shift_template)
+
+        self._evaluate_fairness_alerts(schedule_run)
 
         incomplete = Employee.objects.filter(active=True, fairness_history_complete=False).exists()
         if incomplete:
@@ -345,11 +358,109 @@ class SchedulingEngine:
         if not candidates:
             self._shortage(schedule_run, show, template, excluded)
             return None
-        selected = min(
-            candidates,
-            key=lambda candidate: self._candidate_key(candidate, template, show),
+
+        # STAGE 3: Scarce Bartender Protection
+        if template.role.name == "Server" and template.code != "lead-server":
+            unfilled_bartender = [
+                t
+                for t in ShiftTemplate.objects.filter(role__name="Bartender", active=True)
+                if not ScheduleAssignment.objects.filter(
+                    schedule_run=schedule_run, show=show, shift_template=t
+                ).exists()
+            ]
+            if unfilled_bartender:
+                avail_bar_capable = sum(
+                    1
+                    for c in candidates
+                    if c.employee.employee_roles.filter(
+                        role__name="Bartender", active=True
+                    ).exists()
+                    or c.capability_level >= 4
+                )
+                if avail_bar_capable <= len(unfilled_bartender):
+                    filtered_candidates = []
+                    for c in candidates:
+                        is_bar_capable = (
+                            c.employee.employee_roles.filter(
+                                role__name="Bartender", active=True
+                            ).exists()
+                            or c.capability_level >= 4
+                        )
+                        if is_bar_capable and c.employee.employee_roles.filter(
+                            role__name="Server", active=True
+                        ).exists():
+                            excluded[c.employee.display_name] = (
+                                "Reserved for Bartender coverage.",
+                            )
+                        else:
+                            filtered_candidates.append(c)
+                    if filtered_candidates:
+                        candidates = filtered_candidates
+
+        if not candidates:
+            self._shortage(schedule_run, show, template, excluded)
+            return None
+
+        # STAGE 4: Fairness Ranking & Evaluation
+        capability_levels = {c.employee.id: c.capability_level for c in candidates}
+        fairness_map = self.fairness.evaluate_candidates(
+            [c.employee for c in candidates],
+            template.role,
+            show,
+            template,
+            schedule_run,
+            capability_levels,
+            eligibility_service=self.eligibility,
         )
-        reason = self._selection_reason(selected, template)
+
+        def candidate_sort_key(c: Candidate):
+            fm = fairness_map[c.employee.id]
+            is_cross_trained = c.employee.employee_roles.filter(
+                role__name="Server", active=True
+            ).exists()
+            if template.role.name == "Bartender":
+                bartender_protection = 1 if is_cross_trained else 0
+            else:
+                bartender_protection = 0
+
+            if template.assignment_type == AssignmentType.ON_CALL:
+                return (
+                    bartender_protection,
+                    -fm.on_call_fair_score,
+                    fm.recent_on_call_assignments,
+                    fm.recent_on_call_hours,
+                    fm.opportunity_rate,
+                    c.employee.display_name.casefold(),
+                )
+
+            lead_cap = -c.capability_level if template.code == "lead-server" else 0
+            return (
+                bartender_protection,
+                lead_cap,
+                -fm.confirmed_fair_score,
+                fm.opportunity_rate,
+                fm.recent_actual_hours,
+                fm.recent_on_call_assignments,
+                c.employee.display_name.casefold(),
+            )
+
+        selected = min(candidates, key=candidate_sort_key)
+        fm = fairness_map[selected.employee.id]
+
+        if template.assignment_type == AssignmentType.ON_CALL:
+            reason = (
+                f"Selected for On-Call {template.name}: OnCallFairScore "
+                f"{fm.on_call_fair_score:.3f} (OnCallCntFair: {fm.on_call_count_fairness:.3f}, "
+                f"OppFair: {fm.opportunity_fairness:.3f}). Ranked #1 among "
+                f"{len(candidates)} eligible candidate(s)."
+            )
+        else:
+            reason = (
+                f"Selected as {template.name}: FairScore {fm.confirmed_fair_score:.3f} "
+                f"(OppFair: {fm.opportunity_fairness:.3f}, HoursFair: {fm.hours_fairness:.3f}, "
+                f"TargetAdj: {fm.target_hours_adjustment:+.3f}). Ranked #1 among {len(candidates)} "
+                f"eligible candidate(s)."
+            )
         if (
             template.role.name == "Bartender"
             and not selected.employee.employee_roles.filter(
@@ -357,7 +468,43 @@ class SchedulingEngine:
             ).exists()
         ):
             reason += " Selected as bartender to preserve scarce cross-trained bar coverage."
-        return self._save_assignment(schedule_run, show, template, selected.employee, reason)
+
+        assignment = self._save_assignment(schedule_run, show, template, selected.employee, reason)
+
+        # Save Fairness Snapshots for all evaluated candidates
+        for c in candidates:
+            cfm = fairness_map[c.employee.id]
+            is_chosen = c.employee.id == selected.employee.id
+            SchedulingFairnessSnapshot.objects.create(
+                schedule_run=schedule_run,
+                employee=c.employee,
+                role=template.role,
+                eligible_opportunities=cfm.eligible_opportunities,
+                confirmed_opportunities=cfm.confirmed_opportunities,
+                opportunity_rate=Decimal(str(round(cfm.opportunity_rate, 2))),
+                recent_actual_hours=Decimal(str(round(cfm.recent_actual_hours, 2))),
+                recent_confirmed_shifts=cfm.recent_confirmed_shifts,
+                recent_on_call_assignments=cfm.recent_on_call_assignments,
+                recent_on_call_hours=Decimal(str(round(cfm.recent_on_call_hours, 2))),
+                recent_weekend_shifts=cfm.recent_weekend_shifts,
+                consecutive_nights=cfm.consecutive_nights,
+                role_opportunities=cfm.role_opportunities,
+                target_hours=Decimal(str(round(cfm.target_hours, 2))) if cfm.target_hours else None,
+                projected_hours=Decimal(str(round(cfm.projected_hours, 2))),
+                reliability_score=Decimal(str(round(cfm.reliability_score, 2))),
+                performance_score=Decimal(str(round(cfm.performance_score, 2))),
+                role_fit_score=Decimal(str(round(cfm.role_fit_score, 2))),
+                target_hours_adjustment=Decimal(str(round(cfm.target_hours_adjustment, 2))),
+                confirmed_fair_score=Decimal(str(round(cfm.confirmed_fair_score, 3))),
+                on_call_fair_score=Decimal(str(round(cfm.on_call_fair_score, 3))),
+                selected=is_chosen,
+                selection_reason=reason
+                if is_chosen
+                else f"Ranked lower than {selected.employee.display_name}",
+                score_breakdown=cfm.breakdown,
+            )
+
+        return assignment
 
     def _assign_fifty_fifty(
         self,
@@ -505,3 +652,45 @@ class SchedulingEngine:
             severity=severity,
             message=message,
         )
+
+    def _evaluate_fairness_alerts(self, schedule_run: ScheduleRun) -> None:
+        snapshots = list(
+            SchedulingFairnessSnapshot.objects.filter(
+                schedule_run=schedule_run, selected=True
+            ).select_related("employee")
+        )
+        if not snapshots:
+            return
+
+        opp_rates = [float(s.opportunity_rate) for s in snapshots]
+        if opp_rates and (max(opp_rates) - min(opp_rates) > 0.40):
+            self._warning(
+                schedule_run,
+                None,
+                WarningType.OPPORTUNITY_IMBALANCE,
+                WarningSeverity.INFO,
+                f"OPPORTUNITY_IMBALANCE: Opportunity rates range from "
+                f"{min(opp_rates):.0%} to {max(opp_rates):.0%}.",
+            )
+
+        on_calls = [s.recent_on_call_assignments for s in snapshots]
+        if on_calls and (max(on_calls) - min(on_calls) > 3):
+            self._warning(
+                schedule_run,
+                None,
+                WarningType.ON_CALL_IMBALANCE,
+                WarningSeverity.INFO,
+                f"ON_CALL_IMBALANCE: On-call shift counts range from "
+                f"{min(on_calls)} to {max(on_calls)}.",
+            )
+
+        weekends = [s.recent_weekend_shifts for s in snapshots]
+        if weekends and (max(weekends) - min(weekends) > 4):
+            self._warning(
+                schedule_run,
+                None,
+                WarningType.WEEKEND_IMBALANCE,
+                WarningSeverity.INFO,
+                f"WEEKEND_IMBALANCE: Weekend shift counts range from "
+                f"{min(weekends)} to {max(weekends)}.",
+            )
