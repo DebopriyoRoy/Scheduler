@@ -805,3 +805,61 @@ def export_production_sync_csv(request, run_id):
         ])
 
     return response
+
+
+@login_required
+def calendar_sync(request):
+    """Management view for inspecting and executing Authoritative Spirit Calendar Ingestion."""
+    from datetime import date
+
+    from scheduling.integrations.spirit_calendar.service import SpiritCalendarSyncService
+    from scheduling.models import CalendarSyncRun
+
+    start_date_str = request.GET.get("start") or request.POST.get("start") or "2026-09-07"
+    end_date_str = request.GET.get("end") or request.POST.get("end") or "2026-10-03"
+
+    try:
+        start_d = date.fromisoformat(start_date_str)
+        end_d = date.fromisoformat(end_date_str)
+    except ValueError:
+        start_d = date(2026, 9, 7)
+        end_d = date(2026, 10, 3)
+
+    service = SpiritCalendarSyncService()
+    preview_rows = None
+    sync_summary = None
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "preview":
+            occurrences, provider_used, r_cnt, e_cnt = service.fetch_with_fallback(start_d, end_d)
+            preview_rows = service.generate_preview(occurrences)
+            messages.info(
+                request,
+                f"Preview generated using {provider_used}: Found {len(occurrences)} occurrence(s).",
+            )
+        elif action == "confirm":
+            sync_summary = service.execute_sync(start_d, end_d)
+            sr = sync_summary.sync_run
+            messages.success(
+                request,
+                f"Sync Complete ({sr.provider}): Created {sr.events_created}, "
+                f"Updated {sr.events_updated}, Unchanged {sr.events_unchanged}.",
+            )
+
+    sync_runs = CalendarSyncRun.objects.all()[:10]
+    latest_run = sync_runs.first()
+
+    return render(
+        request,
+        "scheduling/calendar_sync.html",
+        {
+            "start_date": start_d.isoformat(),
+            "end_date": end_d.isoformat(),
+            "sync_runs": sync_runs,
+            "latest_run": latest_run,
+            "preview_rows": preview_rows,
+            "sync_summary": sync_summary,
+        },
+    )
+

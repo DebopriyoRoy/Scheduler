@@ -176,6 +176,46 @@ class SquareLocation(models.Model):
         return self.name
 
 
+class CalendarSyncRun(models.Model):
+    class ProviderChoices(models.TextChoices):
+        API_XHR = "API_XHR", "Structured API/XHR"
+        PLAYWRIGHT = "PLAYWRIGHT", "Playwright Rendered Browser"
+        FALLBACK_METADATA_ONLY = "FALLBACK_METADATA_ONLY", "Fallback Metadata Only"
+
+    class SyncStatus(models.TextChoices):
+        RUNNING = "RUNNING", "Running"
+        SUCCESS = "SUCCESS", "Success"
+        PARTIAL = "PARTIAL", "Partial Completeness"
+        FAILED = "FAILED", "Failed"
+
+    source_url = models.URLField(default="https://spiritofnewfoundland.com/show-calendar/")
+    provider = models.CharField(max_length=64, choices=ProviderChoices.choices)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    events_received = models.PositiveIntegerField(default=0)
+    events_created = models.PositiveIntegerField(default=0)
+    events_updated = models.PositiveIntegerField(default=0)
+    events_unchanged = models.PositiveIntegerField(default=0)
+    events_flagged = models.PositiveIntegerField(default=0)
+
+    rendered_count = models.PositiveIntegerField(default=0)
+    extracted_count = models.PositiveIntegerField(default=0)
+    difference = models.IntegerField(default=0)
+
+    status = models.CharField(max_length=32, choices=SyncStatus.choices, default=SyncStatus.RUNNING)
+    error_message = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self) -> str:
+        return f"CalendarSyncRun #{self.id} ({self.provider}) - {self.status}"
+
+
 class Show(models.Model):
     class Source(models.TextChoices):
         MANUAL = "MANUAL", "Manual"

@@ -12,6 +12,7 @@ urlpatterns = [
     path("shows/<int:show_id>/edit/", views.show_edit, name="show_edit"),
     path("shows/<int:show_id>/deactivate/", views.show_deactivate, name="show_deactivate"),
     path("shows/import/", views.show_import, name="show_import"),
+    path("shows/calendar-sync/", views.calendar_sync, name="calendar_sync"),
     path("availability/", views.availability, name="availability"),
     path("availability/template/", views.availability_template, name="availability_template"),
     path("configuration/rotations/", views.rotation_configuration, name="rotation_configuration"),

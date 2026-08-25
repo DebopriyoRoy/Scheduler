@@ -1,0 +1,192 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Calendar Sync | Spirit Scheduling Engine{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Authoritative Data Ingestion</p>
+    <h1 class="h2">Spirit Live Show Calendar Sync</h1>
+    <p class="text-secondary">Extracts every event occurrence from the live public calendar: <a href="https://spiritofnewfoundland.com/show-calendar/" target="_blank" class="fw-semibold text-decoration-none">https://spiritofnewfoundland.com/show-calendar/</a></p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'show_list' %}">&larr; Back to Shows</a>
+</div>
+
+<!-- Authoritative Live Source Status Card -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="badge text-bg-success mb-2">AUTHORITATIVE SOURCE</span>
+        <h6 class="text-secondary small mb-1">Target Range</h6>
+        <p class="fw-bold mb-0">{{ start_date }} to {{ end_date }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="badge text-bg-primary mb-2">PRIMARY / FALLBACK</span>
+        <h6 class="text-secondary small mb-1">Provider Engine</h6>
+        <p class="fw-bold mb-0">{% if latest_run %}{{ latest_run.provider }}{% else %}Playwright / API{% endif %}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="badge text-bg-info mb-2">COMPLETENESS METRIC</span>
+        <h6 class="text-secondary small mb-1">Rendered vs Extracted</h6>
+        <p class="fw-bold mb-0">
+          {% if latest_run %}
+            {{ latest_run.extracted_count }} / {{ latest_run.rendered_count }} (Diff: {{ latest_run.difference }})
+          {% else %}
+            Ready for Sync
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <span class="badge {% if latest_run and latest_run.status == 'SUCCESS' %}text-bg-success{% else %}text-bg-warning{% endif %} mb-2">LAST SYNC STATUS</span>
+        <h6 class="text-secondary small mb-1">Completion</h6>
+        <p class="fw-bold mb-0">{% if latest_run %}{{ latest_run.status }} ({{ latest_run.started_at|date:"M j, H:i" }}){% else %}Never Run{% endif %}</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Form -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Live Calendar Extraction & Sync</h5>
+    <form method="post" action="{% url 'calendar_sync' %}" class="row g-3 align-items-end">
+      {% csrf_token %}
+      <div class="col-md-4">
+        <label class="form-label font-monospace small" for="start_date">Start Date</label>
+        <input type="date" class="form-control" id="start_date" name="start" value="{{ start_date }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label font-monospace small" for="end_date">End Date</label>
+        <input type="date" class="form-control" id="end_date" name="end" value="{{ end_date }}" required>
+      </div>
+      <div class="col-md-4 d-flex gap-2">
+        <button type="submit" name="action" value="preview" class="btn btn-outline-primary w-100">Preview Extract</button>
+        <button type="submit" name="action" value="confirm" class="btn btn-primary w-100">Refresh Live Calendar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if preview_rows %}
+<!-- Preview Results Table -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-body py-3">
+    <h5 class="card-title mb-0">Extraction Preview ({{ preview_rows|length }} Occurrences Found)</h5>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Day</th>
+          <th>Full Event Title</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Venue</th>
+          <th>Category</th>
+          <th>Existing Local Record</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview_rows %}
+        <tr>
+          <td>{{ row.occurrence.date|date:"Y-m-d" }}</td>
+          <td>{{ row.occurrence.date|date:"D" }}</td>
+          <td class="fw-semibold">
+            {{ row.occurrence.full_title }}
+            {% if row.occurrence.is_private %}<span class="badge text-bg-secondary ms-1">Private</span>{% endif %}
+            {% if row.occurrence.is_offsite %}<span class="badge text-bg-info ms-1">Offsite</span>{% endif %}
+          </td>
+          <td>{{ row.occurrence.start_time|time:"H:i" }}</td>
+          <td>{{ row.occurrence.end_time|time:"H:i" }}</td>
+          <td>{{ row.occurrence.venue }}</td>
+          <td><span class="badge text-bg-light border">{{ row.occurrence.category }}</span></td>
+          <td>
+            {% if row.existing_show %}
+              <span class="font-monospace small">#{{ row.existing_show.id }} {{ row.existing_show.title }}</span>
+            {% else %}
+              <span class="text-muted small">None</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.action == "CREATE" %}
+              <span class="badge text-bg-success">CREATE</span>
+            {% elif row.action == "UPDATE" %}
+              <span class="badge text-bg-warning">UPDATE</span>
+            {% else %}
+              <span class="badge text-bg-secondary">UNCHANGED</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- History of Sync Runs -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-body py-3">
+    <h5 class="card-title mb-0">Calendar Sync Audit Log</h5>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Sync ID</th>
+          <th>Started At</th>
+          <th>Provider</th>
+          <th>Date Range</th>
+          <th>Events Recv</th>
+          <th>Created</th>
+          <th>Updated</th>
+          <th>Unchanged</th>
+          <th>Rendered vs Extracted</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in sync_runs %}
+        <tr>
+          <td class="font-monospace">#{{ run.id }}</td>
+          <td>{{ run.started_at|date:"Y-m-d H:i:s" }}</td>
+          <td><span class="badge text-bg-outline border">{{ run.provider }}</span></td>
+          <td>{{ run.start_date }} to {{ run.end_date }}</td>
+          <td>{{ run.events_received }}</td>
+          <td><span class="text-success font-monospace">{{ run.events_created }}</span></td>
+          <td><span class="text-warning font-monospace">{{ run.events_updated }}</span></td>
+          <td><span class="text-secondary font-monospace">{{ run.events_unchanged }}</span></td>
+          <td>{{ run.extracted_count }} / {{ run.rendered_count }}</td>
+          <td>
+            {% if run.status == 'SUCCESS' %}
+              <span class="badge text-bg-success">SUCCESS</span>
+            {% elif run.status == 'PARTIAL' %}
+              <span class="badge text-bg-warning">PARTIAL</span>
+            {% else %}
+              <span class="badge text-bg-danger">FAILED</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="10" class="text-center py-4 text-muted">No calendar sync runs recorded yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
