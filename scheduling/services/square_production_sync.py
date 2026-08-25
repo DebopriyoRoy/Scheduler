@@ -126,8 +126,7 @@ def sync_production_team_members(
     client: SquareClient | None = None,
     user=None,
 ) -> dict[str, int]:
-    """Retrieves Production team members and matches exact normalized names."""
-
+    """Retrieves Production team members and performs exact and candidate matching against staff."""
     config = SquareConfig.from_env()
     prod_config = SquareConfig(
         environment=SquareEnvironment.PRODUCTION,
@@ -141,9 +140,10 @@ def sync_production_team_members(
 
     team_members = client.search_team_members(active_only=True)
 
-    mapped_count = 0
-    unmapped_count = 0
+    exact_count = 0
+    review_count = 0
     ambiguous_count = 0
+    not_found_count = 0
 
     for emp in Employee.objects.filter(active=True):
         norm_emp_name = normalize_name(emp.display_name)
@@ -151,16 +151,60 @@ def sync_production_team_members(
         if emp.excluded_from_automatic_scheduling or norm_emp_name in EXCLUDED_STAFF_NAMES:
             continue
 
-        matches = []
+        existing_mapping = SquareEmployeeMapping.objects.filter(
+            employee=emp,
+            environment=SquareEnvironment.PRODUCTION.value,
+        ).first()
+
+        # Check existing confirmed mapping
+        if existing_mapping and existing_mapping.status in {
+            MappingStatus.MAPPED,
+            MappingStatus.MAPPED_EXACT,
+        }:
+            exact_count += 1
+            continue
+
+        exact_matches = []
+        candidate_matches = []
+
         for tm in team_members:
             given = tm.get("given_name", "")
             family = tm.get("family_name", "")
-            tm_name = normalize_name(f"{given} {family}".strip() or given)
-            if tm_name == norm_emp_name:
-                matches.append(tm)
+            full_tm_name = f"{given} {family}".strip() or given
+            norm_tm_name = normalize_name(full_tm_name)
+            norm_given = normalize_name(given)
 
-        if len(matches) == 1:
-            match = matches[0]
+            if norm_tm_name == norm_emp_name:
+                exact_matches.append(tm)
+            elif norm_given == norm_emp_name or (norm_emp_name in norm_tm_name):
+                candidate_matches.append(tm)
+
+        if len(exact_matches) == 1:
+            match = exact_matches[0]
+            g_name = match.get("given_name", "")
+            f_name = match.get("family_name", "")
+            SquareEmployeeMapping.objects.update_or_create(
+                employee=emp,
+                environment=SquareEnvironment.PRODUCTION.value,
+                defaults={
+                    "square_team_member_id": match.get("id", ""),
+                    "square_given_name": g_name,
+                    "square_family_name": f_name,
+                    "potential_square_name": f"{g_name} {f_name}".strip(),
+                    "match_type": "EXACT_NAME_MATCH",
+                    "confidence_reason": "Exact normalized name match.",
+                    "status": MappingStatus.MAPPED_EXACT,
+                    "verified_at": timezone.now(),
+                },
+            )
+            exact_count += 1
+        elif len(candidate_matches) == 1:
+            match = candidate_matches[0]
+            sq_full_name = f"{match.get('given_name', '')} {match.get('family_name', '')}".strip()
+            reason_msg = (
+                f"Matches given name of Square team member '{sq_full_name}'. "
+                "Management review required."
+            )
             SquareEmployeeMapping.objects.update_or_create(
                 employee=emp,
                 environment=SquareEnvironment.PRODUCTION.value,
@@ -168,18 +212,22 @@ def sync_production_team_members(
                     "square_team_member_id": match.get("id", ""),
                     "square_given_name": match.get("given_name", ""),
                     "square_family_name": match.get("family_name", ""),
-                    "status": MappingStatus.MAPPED,
-                    "verified_at": timezone.now(),
+                    "potential_square_name": sq_full_name,
+                    "match_type": "GIVEN_NAME_CANDIDATE",
+                    "confidence_reason": reason_msg,
+                    "status": MappingStatus.MANUAL_REVIEW_REQUIRED,
                 },
             )
-            mapped_count += 1
-        elif len(matches) > 1:
+
+            review_count += 1
+        elif len(exact_matches) > 1 or len(candidate_matches) > 1:
             SquareEmployeeMapping.objects.update_or_create(
                 employee=emp,
                 environment=SquareEnvironment.PRODUCTION.value,
                 defaults={
                     "square_team_member_id": "",
                     "status": MappingStatus.AMBIGUOUS,
+                    "confidence_reason": "Multiple Square team members match name criteria.",
                 },
             )
             ambiguous_count += 1
@@ -189,16 +237,37 @@ def sync_production_team_members(
                 environment=SquareEnvironment.PRODUCTION.value,
                 defaults={
                     "square_team_member_id": "",
-                    "status": MappingStatus.UNMAPPED,
+                    "status": MappingStatus.NOT_FOUND,
+                    "confidence_reason": "No active Square team member matching name.",
                 },
             )
-            unmapped_count += 1
+            not_found_count += 1
 
     return {
-        "mapped": mapped_count,
-        "unmapped": unmapped_count,
+        "mapped_exact": exact_count,
+        "manual_review_required": review_count,
         "ambiguous": ambiguous_count,
+        "not_found": not_found_count,
     }
+
+
+def approve_manual_employee_mapping(
+    employee_id: int,
+    square_team_member_id: str,
+    user=None,
+) -> SquareEmployeeMapping:
+    """Confirms and activates a manual employee mapping for Production."""
+    mapping = SquareEmployeeMapping.objects.get(
+        employee_id=employee_id,
+        environment=SquareEnvironment.PRODUCTION.value,
+    )
+    mapping.square_team_member_id = square_team_member_id
+    mapping.status = MappingStatus.MAPPED_EXACT
+    mapping.verified_at = timezone.now()
+    mapping.confidence_reason = f"Manually verified by management ({user or 'Admin'})."
+    mapping.save()
+    return mapping
+
 
 
 def sync_production_jobs(
@@ -353,12 +422,12 @@ def preview_production_sync(
 
         sq_team_id = (
             emp_map.square_team_member_id
-            if emp_map and emp_map.status == MappingStatus.MAPPED
+            if emp_map and emp_map.status in {MappingStatus.MAPPED, MappingStatus.MAPPED_EXACT}
             else ""
         )
         sq_job_id = (
             role_map.square_job_id
-            if role_map and role_map.status == MappingStatus.MAPPED
+            if role_map and role_map.status in {MappingStatus.MAPPED, MappingStatus.MAPPED_EXACT}
             else ""
         )
 
@@ -394,21 +463,29 @@ def preview_production_sync(
                 ex_end = details.get("end_at", "")
 
                 if ex_team == sq_team_id:
-                    if (
-                        ex_job == sq_job_id
-                        and ex_start[:19] == start_iso[:19]
-                        and ex_end[:19] == end_iso[:19]
-                    ):
-                        dup_found = True
-                        break
-                    if ex_start < end_iso and ex_end > start_iso:
+                    # Detect exact shift match or pilot shift match
+                    start_date_match = (ex_start[:10] == start_iso[:10])
+                    start_time_match = (ex_start[:16] == start_iso[:16])
+                    
+                    if start_date_match:
+                        if ex_job == sq_job_id or start_time_match:
+                            dup_found = True
+                            break
+                        else:
+                            conflict_found = True
+                            break
+                    elif ex_start < end_iso and ex_end > start_iso:
                         conflict_found = True
                         break
 
             if dup_found:
                 result_status = "ALREADY_EXISTS"
-                reason = "Equivalent shift already exists in Square Production."
+                reason = (
+                    "Equivalent shift (or verified pilot shift) "
+                    "already exists in Square Production."
+                )
                 already_exists_count += 1
+
             elif conflict_found:
                 result_status = "EXISTING_SHIFT_CONFLICT"
                 reason = "Employee has an overlapping scheduled shift in Square Production."
@@ -417,6 +494,7 @@ def preview_production_sync(
                 if not config.production_writes_enabled:
                     reason = "Ready (Note: Production writes are currently disabled in settings)."
                 ready_count += 1
+
 
         rows.append(
             ProductionSyncPreviewRow(

@@ -86,7 +86,13 @@ urlpatterns = [
         views.square_production_full_sync,
         name="square_production_full_sync",
     ),
+    path(
+        "schedules/<int:run_id>/sync-export.csv",
+        views.export_production_sync_csv,
+        name="export_production_sync_csv",
+    ),
 ]
+
 
 
 

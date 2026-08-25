@@ -35,6 +35,7 @@ from scheduling.models import (
     Employee,
     EmployeeAvailability,
     FiftyFiftyRotationConfig,
+    MappingStatus,
     OfficeRotationConfig,
     Role,
     ScheduleAssignment,
@@ -54,6 +55,7 @@ from scheduling.services.metrics import metrics_for_employee
 from scheduling.services.square_production_sync import (
     EXPECTED_STAFF_NAMES,
     SquareProductionSyncError,
+    approve_manual_employee_mapping,
     create_production_pilot_shift,
     mark_pilot_verified,
     preview_production_sync,
@@ -596,17 +598,44 @@ def schedule_sync_confirm(request, run_id):
 
 @login_required
 def square_team_mapping(request):
-    if request.method == "POST" and request.POST.get("action") == "auto_match":
-        try:
-            res = sync_production_team_members(user=request.user)
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "auto_match":
+            try:
+                res = sync_production_team_members(user=request.user)
+                messages.success(
+                    request,
+                    f"Production Team Auto-Match complete: {res['mapped_exact']} exact mapped, "
+                    f"{res['manual_review_required']} review required.",
+                )
+            except Exception as exc:
+                messages.error(request, f"Unable to fetch Production team members: {exc}")
+            return redirect("square_team_mapping")
+        elif action == "approve_all_candidates":
+            review_mappings = SquareEmployeeMapping.objects.filter(
+                environment=SquareEnvironmentChoices.PRODUCTION,
+                status=MappingStatus.MANUAL_REVIEW_REQUIRED,
+            )
+            count = 0
+            for m in review_mappings:
+                if m.square_team_member_id:
+                    approve_manual_employee_mapping(
+                        m.employee_id, m.square_team_member_id, user=request.user
+                    )
+                    count += 1
             messages.success(
                 request,
-                f"Production Team Auto-Match complete: {res['mapped']} mapped, "
-                f"{res['unmapped']} unmapped, {res['ambiguous']} ambiguous.",
+                f"Approved {count} candidate team member mappings for Production!",
             )
-        except Exception as exc:
-            messages.error(request, f"Unable to fetch Production team members: {exc}")
-        return redirect("square_team_mapping")
+
+            return redirect("square_team_mapping")
+        elif action == "approve_one":
+            emp_id = request.POST.get("employee_id")
+            sq_id = request.POST.get("square_team_member_id")
+            if emp_id and sq_id:
+                approve_manual_employee_mapping(int(emp_id), sq_id, user=request.user)
+                messages.success(request, "Mapping approved successfully!")
+            return redirect("square_team_mapping")
 
     mappings = SquareEmployeeMapping.objects.filter(
         environment=SquareEnvironmentChoices.PRODUCTION
@@ -619,6 +648,7 @@ def square_team_mapping(request):
             "expected_staff": EXPECTED_STAFF_NAMES,
         },
     )
+
 
 
 @login_required
@@ -736,4 +766,42 @@ def square_production_full_sync(request, run_id):
     return redirect("square_production_sync_hub", run_id=run_id)
 
 
+@login_required
+def export_production_sync_csv(request, run_id):
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    preview = preview_production_sync(schedule_run, user=request.user)
 
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = (
+        f'attachment; filename="production_square_sync_results_run_{run_id}.csv"'
+    )
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "Date",
+        "Show",
+        "Employee",
+        "Role",
+        "Assignment Type",
+        "Start",
+        "End",
+        "Square Shift ID",
+        "Status",
+        "Reason",
+    ])
+
+    for r in preview.rows:
+        writer.writerow([
+            r.show_date,
+            r.show_title,
+            r.employee_name,
+            r.role_name,
+            r.assignment_type,
+            r.start_at,
+            r.end_at,
+            r.square_team_member_id if r.result_status == "ALREADY_EXISTS" else "",
+            r.result_status,
+            r.reason,
+        ])
+
+    return response

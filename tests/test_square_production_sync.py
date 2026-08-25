@@ -70,12 +70,13 @@ def test_production_team_mapping_exact_normalized_matching(monkeypatch):
     mock_client.search_team_members.return_value = team_members
 
     res = sync_production_team_members(client=mock_client)
-    assert res["mapped"] >= 4
+    assert (res["mapped_exact"] + res["manual_review_required"]) >= 4
 
     joleen = Employee.objects.get(display_name="Joleen Dickson")
     mapping = SquareEmployeeMapping.objects.get(employee=joleen, environment="production")
-    assert mapping.status == MappingStatus.MAPPED
+    assert mapping.status == MappingStatus.MAPPED_EXACT
     assert mapping.square_team_member_id == "SQ_TM_Joleen"
+
 
 
 @pytest.mark.django_db
@@ -304,3 +305,107 @@ def test_publishing_remains_impossible():
             environment=SquareEnvironment.PRODUCTION,
             publishing_enabled=True,
         ).assert_publishing_disabled()
+
+
+@pytest.mark.django_db
+def test_manual_review_and_candidate_approval(monkeypatch):
+    monkeypatch.setenv("SQUARE_ENVIRONMENT", "production")
+    monkeypatch.setenv("SQUARE_PRODUCTION_ACCESS_TOKEN", "prod-token")
+    call_command("seed_spirit_staff")
+
+    team_members = [
+        {"id": "SQ_TM_OLENA", "given_name": "Olena", "family_name": "Martynova"},
+    ]
+    mock_client = MagicMock(spec=SquareClient)
+    mock_client.search_team_members.return_value = team_members
+
+    res = sync_production_team_members(client=mock_client)
+    assert res["manual_review_required"] >= 1
+
+    olena = Employee.objects.get(display_name="Olena")
+    mapping = SquareEmployeeMapping.objects.get(employee=olena, environment="production")
+    assert mapping.status == MappingStatus.MANUAL_REVIEW_REQUIRED
+    assert mapping.potential_square_name == "Olena Martynova"
+
+    # Approve candidate
+    from scheduling.services.square_production_sync import approve_manual_employee_mapping
+    approved = approve_manual_employee_mapping(olena.id, "SQ_TM_OLENA")
+    assert approved.status == MappingStatus.MAPPED_EXACT
+    assert approved.square_team_member_id == "SQ_TM_OLENA"
+
+
+@pytest.mark.django_db
+def test_pilot_duplicate_detected_as_already_exists(monkeypatch, settings):
+    settings.DEBUG = True
+    monkeypatch.setenv("SQUARE_ENVIRONMENT", "production")
+    monkeypatch.setenv("SQUARE_PRODUCTION_ACCESS_TOKEN", "prod-token")
+    call_command("seed_spirit_staff")
+    call_command("seed_scheduling_config")
+    call_command("seed_schedule_demo")
+
+    user = User.objects.create_user(username="admin_test")
+    run = SchedulingEngine().generate(date(2026, 9, 12), date(2026, 9, 12), allow_shortages=True)
+    approve_schedule(run, user)
+
+    # Map staff & role
+    jackie = Employee.objects.get(display_name="Jackie Pynn")
+    SquareEmployeeMapping.objects.create(
+        employee=jackie,
+        environment="production",
+        square_team_member_id="TM_JACKIE",
+        status=MappingStatus.MAPPED_EXACT,
+    )
+    server_role = Role.objects.get(name="Server")
+    SquareRoleMapping.objects.create(
+        role=server_role,
+        environment="production",
+        square_job_id="JOB_SERVER",
+        status=MappingStatus.MAPPED_EXACT,
+    )
+    SquareLocationMapping.objects.create(
+        environment="production",
+        square_location_id="LR73BX986ZKYD",
+    )
+
+
+    mock_client = MagicMock(spec=SquareClient)
+    mock_client.search_scheduled_shifts.return_value = [
+        {
+            "id": "T39WJ6S3HYSSJ",
+            "draft_shift_details": {
+                "team_member_id": "TM_JACKIE",
+                "job_id": "JOB_SERVER",
+                "start_at": "2026-09-12T15:00:00-02:30",
+                "end_at": "2026-09-12T21:30:00-02:30",
+            },
+        }
+    ]
+
+    preview = preview_production_sync(run, client=mock_client)
+    assert preview.already_exists_count >= 1
+
+    already_exists_row = next(r for r in preview.rows if r.result_status == "ALREADY_EXISTS")
+    assert already_exists_row.employee_name == "Jackie Pynn"
+
+
+@pytest.mark.django_db
+def test_export_production_sync_csv_view(client, monkeypatch, settings):
+    settings.DEBUG = True
+    monkeypatch.setenv("SQUARE_ENVIRONMENT", "production")
+    monkeypatch.setenv("SQUARE_PRODUCTION_ACCESS_TOKEN", "prod-token")
+    call_command("seed_spirit_staff")
+    call_command("seed_scheduling_config")
+    call_command("seed_schedule_demo")
+
+    user = User.objects.create_user(username="csv_admin")
+    client.force_login(user)
+
+    run = SchedulingEngine().generate(date(2026, 9, 12), date(2026, 9, 12), allow_shortages=True)
+    approve_schedule(run, user)
+
+    response = client.get(f"/schedules/{run.id}/sync-export.csv")
+    assert response.status_code == 200
+    assert response["Content-Type"] == "text/csv"
+    assert b"Date,Show,Employee,Role" in response.content
+
+

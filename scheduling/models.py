@@ -533,9 +533,13 @@ class FiftyFiftyRotationConfig(models.Model):
 
 
 class MappingStatus(models.TextChoices):
+    MAPPED_EXACT = "MAPPED_EXACT", "Mapped (Exact)"
+    MANUAL_REVIEW_REQUIRED = "MANUAL_REVIEW_REQUIRED", "Manual Review Required"
+    NOT_FOUND = "NOT_FOUND", "Not Found"
+    INACTIVE = "INACTIVE", "Inactive"
+    AMBIGUOUS = "AMBIGUOUS", "Ambiguous"
     MAPPED = "MAPPED", "Mapped"
     UNMAPPED = "UNMAPPED", "Unmapped"
-    AMBIGUOUS = "AMBIGUOUS", "Ambiguous"
 
 
 class SquareEnvironmentChoices(models.TextChoices):
@@ -574,13 +578,17 @@ class SquareEmployeeMapping(models.Model):
     square_team_member_id = models.CharField(max_length=100, blank=True)
     square_given_name = models.CharField(max_length=100, blank=True)
     square_family_name = models.CharField(max_length=100, blank=True)
+    potential_square_name = models.CharField(max_length=255, blank=True)
+    match_type = models.CharField(max_length=50, blank=True)
+    confidence_reason = models.TextField(blank=True)
     status = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=MappingStatus.choices,
         default=MappingStatus.UNMAPPED,
     )
     verified_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
+
 
     class Meta:
         ordering = ["environment", "employee__display_name"]
@@ -609,10 +617,11 @@ class SquareRoleMapping(models.Model):
     square_job_id = models.CharField(max_length=100, blank=True)
     square_job_title = models.CharField(max_length=100, blank=True)
     status = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=MappingStatus.choices,
         default=MappingStatus.UNMAPPED,
     )
+
     verified_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
