@@ -97,6 +97,10 @@ class WarningType(models.TextChoices):
         "Insufficient fairness history",
     )
     ROLE_CONFIGURATION_ERROR = "ROLE_CONFIGURATION_ERROR", "Role configuration error"
+    EVENT_STAFFING_REVIEW_REQUIRED = (
+        "EVENT_STAFFING_REVIEW_REQUIRED",
+        "Event staffing review required",
+    )
 
 
 class Employee(models.Model):
@@ -471,6 +475,20 @@ class ScheduleRun(models.Model):
         null=True,
         on_delete=models.SET_NULL,
         related_name="availability_schedule_runs",
+    )
+    calendar_sync_run = models.ForeignKey(
+        "CalendarSyncRun",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="schedule_runs",
+    )
+    availability_sync_run = models.ForeignKey(
+        "SquareAvailabilitySyncRun",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="schedule_runs",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

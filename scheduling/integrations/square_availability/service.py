@@ -184,6 +184,40 @@ class SquareAvailabilitySyncService:
         sync_run.completed_at = timezone.now()
         sync_run.save()
 
+        # Upsert live availability into EmployeeAvailability model table
+        from scheduling.models import AvailabilityType, EmployeeAvailability
+
+        for emp in active_employees:
+            for ed in event_dates:
+                rec = record_map.get((emp.display_name.lower(), ed))
+                av_type = AvailabilityType.AVAILABLE_ALL_DAY
+                st = None
+                et = None
+                if rec:
+                    if rec.state == AvailabilityState.AVAILABLE_ALL_DAY:
+                        av_type = AvailabilityType.AVAILABLE_ALL_DAY
+                    elif rec.state == AvailabilityState.AVAILABLE_WINDOW:
+                        av_type = AvailabilityType.AVAILABLE_WINDOW
+                        st = rec.start_time
+                        et = rec.end_time
+                    elif rec.state == AvailabilityState.UNAVAILABLE:
+                        av_type = AvailabilityType.UNAVAILABLE
+                    else:
+                        av_type = AvailabilityType.UNKNOWN
+                else:
+                    av_type = AvailabilityType.UNKNOWN
+
+                EmployeeAvailability.objects.update_or_create(
+                    employee=emp,
+                    date=ed,
+                    defaults={
+                        "availability_type": av_type,
+                        "start_time": st,
+                        "end_time": et,
+                        "source": "LIVE_SQUARE_PRODUCTION",
+                    },
+                )
+
         # Compute role-aware capacity for each event date
         capacity_summaries: list[DateCapacitySummary] = []
         for ed in event_dates:

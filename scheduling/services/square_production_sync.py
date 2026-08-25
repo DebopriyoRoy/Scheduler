@@ -455,18 +455,32 @@ def preview_production_sync(
         else:
             dup_found = False
             conflict_found = False
+            pilot_mismatch = False
             for ex in existing_shifts:
+                shift_id = ex.get("id")
                 details = ex.get("draft_shift_details") or ex.get("published_shift_details") or {}
                 ex_team = details.get("team_member_id")
                 ex_job = details.get("job_id")
                 ex_start = details.get("start_at", "")
                 ex_end = details.get("end_at", "")
 
+                # Check pilot shift T39WJ6S3HYSSJ
+                if (
+                    shift_id == "T39WJ6S3HYSSJ"
+                    and assignment.show.date.isoformat() == "2026-09-12"
+                    and assignment.shift_template.code == "lead-server"
+                ):
+                    if assignment.employee.display_name == "Jackie Pynn":
+                        dup_found = True
+                        break
+                    else:
+                        pilot_mismatch = True
+                        break
+
                 if ex_team == sq_team_id:
-                    # Detect exact shift match or pilot shift match
-                    start_date_match = (ex_start[:10] == start_iso[:10])
-                    start_time_match = (ex_start[:16] == start_iso[:16])
-                    
+                    start_date_match = ex_start[:10] == start_iso[:10]
+                    start_time_match = ex_start[:16] == start_iso[:16]
+
                     if start_date_match:
                         if ex_job == sq_job_id or start_time_match:
                             dup_found = True
@@ -478,7 +492,14 @@ def preview_production_sync(
                         conflict_found = True
                         break
 
-            if dup_found:
+            if pilot_mismatch:
+                result_status = "PILOT_SCHEDULE_MISMATCH"
+                reason = (
+                    f"Production pilot shift T39WJ6S3HYSSJ is for Jackie Pynn, "
+                    f"but schedule assigns {assignment.employee.display_name}."
+                )
+                blocked_count += 1
+            elif dup_found:
                 result_status = "ALREADY_EXISTS"
                 reason = (
                     "Equivalent shift (or verified pilot shift) "

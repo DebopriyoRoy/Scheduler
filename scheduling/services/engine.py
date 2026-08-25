@@ -75,9 +75,21 @@ class SchedulingEngine:
         created_by=None,
         allow_shortages: bool = False,
         schedule_run: ScheduleRun | None = None,
+        calendar_sync_run=None,
+        availability_sync_run=None,
     ) -> ScheduleRun:
         if end_date < start_date:
             raise ValidationError("End date must not precede the start date.")
+
+        from scheduling.models import CalendarSyncRun, SquareAvailabilitySyncRun
+
+        if calendar_sync_run is None:
+            calendar_sync_run = CalendarSyncRun.objects.filter(status="SUCCESS").first()
+        if availability_sync_run is None:
+            availability_sync_run = SquareAvailabilitySyncRun.objects.filter(
+                status__in=["SUCCESS", "PARTIAL"]
+            ).first()
+
         shows = list(
             Show.objects.filter(
                 active=True,
@@ -107,11 +119,17 @@ class SchedulingEngine:
             schedule_run.start_date = start_date
             schedule_run.end_date = end_date
             schedule_run.created_by = created_by or schedule_run.created_by
+            schedule_run.calendar_sync_run = calendar_sync_run or schedule_run.calendar_sync_run
+            schedule_run.availability_sync_run = (
+                availability_sync_run or schedule_run.availability_sync_run
+            )
         else:
             schedule_run = ScheduleRun(
                 start_date=start_date,
                 end_date=end_date,
                 created_by=created_by,
+                calendar_sync_run=calendar_sync_run,
+                availability_sync_run=availability_sync_run,
             )
         schedule_run.status = ScheduleRunStatus.GENERATING
         schedule_run.algorithm_version = self.algorithm_version
@@ -122,6 +140,20 @@ class SchedulingEngine:
         rotation = FiftyFiftyRotation()
         for show in shows:
             self._create_input_warnings(schedule_run, show)
+
+            # Section 10: Critical Offsite Rule
+            is_offsite = "offsite" in show.title.lower() or "offsite" in show.venue.lower()
+            if is_offsite:
+                self._warning(
+                    schedule_run,
+                    show,
+                    WarningType.EVENT_STAFFING_REVIEW_REQUIRED,
+                    WarningSeverity.WARNING,
+                    "OFFSITE_STAFFING_REVIEW_REQUIRED: Offsite event requires "
+                    "manual management staffing review.",
+                )
+                continue
+
             requirements, outside_rules = staffing_requirements_for(show)
             if outside_rules:
                 self._warning(

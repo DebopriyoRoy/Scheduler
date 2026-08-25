@@ -153,6 +153,11 @@ class SpiritCalendarSyncService:
             unchanged_cnt = 0
 
             if not dry_run:
+                ext_ids = [row.occurrence.external_occurrence_id for row in preview_rows]
+                Show.objects.filter(date__range=(start_date, end_date)).exclude(
+                    external_id__in=ext_ids
+                ).update(active=False)
+
                 for row in preview_rows:
                     occ = row.occurrence
                     show, was_created = Show.objects.update_or_create(
@@ -166,6 +171,7 @@ class SpiritCalendarSyncService:
                             "source": Show.Source.CALENDAR_IMPORT,
                             "source_url": occ.event_url,
                             "active": not occ.is_cancelled,
+                            "requires_service_staff": True,
                         },
                     )
                     if was_created:
