@@ -1,7 +1,77 @@
 {% extends "scheduling/base.html" %}
-{% block title %}Employees | Spirit Scheduling Engine{% endblock %}
+{% block title %}Staff &amp; availability | Spirit Scheduling Engine{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h2 mb-0">Employees</h1><a href="{% url 'dashboard' %}">Dashboard</a></div>
-<div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Name</th><th>Roles</th><th>Square mapping</th><th>Status</th></tr></thead><tbody>{% for employee in employees %}<tr><td>{{ employee.display_name }}</td><td>{% for item in employee.employee_roles.all %}<span class="badge text-bg-light border">{{ item.role.name }} L{{ item.capability_level }}</span>{% empty %}<span class="text-secondary">No roles</span>{% endfor %}</td><td>{% if employee.square_team_member_id %}<code>Mapped</code>{% else %}<span class="text-secondary">Not mapped</span>{% endif %}</td><td>{% if employee.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="text-center text-secondary py-5">No employees have been seeded.</td></tr>{% endfor %}</tbody></table></div></div>
-{% endblock %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Inputs</p>
+    <h1 class="h2 mb-1">Staff &amp; availability</h1>
+    <p class="text-secondary mb-0">
+      Everyone on the roster, what they are qualified for, and the hours they usually
+      work each day of the week.
+    </p>
+  </div>
+  <div class="text-end small">
+    <a class="btn btn-sm btn-outline-primary" href="{% url 'availability' %}">Edit availability</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'availability_comparison' %}">Compare with Square</a>
+  </div>
+</div>
 
+{% if no_availability %}
+  <div class="alert alert-warning">
+    <strong>No availability on file:</strong> {{ no_availability|join:", " }}.
+    The engine cannot schedule anyone it has no availability for, so these staff are
+    never considered. Add their hours on the
+    <a href="{% url 'availability' %}">availability page</a>.
+  </div>
+{% endif %}
+
+<div class="card border-0 shadow-sm"><div class="table-responsive">
+<table class="table table-hover align-middle mb-0">
+  <thead class="table-light">
+    <tr>
+      <th style="min-width:11rem">Name</th>
+      <th style="min-width:12rem">Qualified for</th>
+      {% for day in weekdays %}<th class="text-center small">{{ day }}</th>{% endfor %}
+      <th>Square</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+      <tr>
+        <td class="fw-medium">
+          {{ row.employee.display_name }}
+          {% if row.employee.spirit_only_employment %}
+            <span class="badge text-bg-warning-subtle border text-warning-emphasis" title="Spirit is their only employer">Spirit only</span>
+          {% endif %}
+        </td>
+        <td>
+          {% for item in row.roles %}
+            <span class="badge text-bg-light border">{{ item.role.name }} L{{ item.capability_level }}</span>
+          {% empty %}
+            <span class="text-secondary small">No roles</span>
+          {% endfor %}
+        </td>
+        {% for cell in row.pattern %}
+          <td class="text-center small text-nowrap {% if cell.unavailable %}table-secondary text-secondary{% elif cell.blank %}table-light{% endif %}">
+            {% if cell.blank %}<span class="text-secondary">&mdash;</span>
+            {% elif cell.unavailable %}off
+            {% else %}{{ cell.text }}{% endif %}
+          </td>
+        {% endfor %}
+        <td>{% if row.employee.square_team_member_id %}<span class="badge text-bg-light border">Mapped</span>{% else %}<span class="text-secondary small">Not mapped</span>{% endif %}</td>
+        <td>{% if row.employee.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="12" class="text-center text-secondary py-5">No employees have been seeded.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div></div>
+
+<p class="text-secondary small mt-3 mb-0">
+  The weekly pattern is the window each person most often holds on that weekday.
+  A dash means nothing is on file for that day, which is not the same as being
+  unavailable &mdash; the engine treats an unknown day as unschedulable either way.
+</p>
+{% endblock %}

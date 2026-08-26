@@ -1,6 +1,49 @@
 {% extends "scheduling/base.html" %}
 {% block title %}Schedules | Spirit Scheduling Engine{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4"><div><p class="text-uppercase text-primary fw-semibold small mb-1">Management</p><h1 class="h2">Schedule Runs</h1><p class="text-secondary">Local drafts and approvals only. Nothing here publishes to Square.</p></div><a class="btn btn-primary" href="{% url 'schedule_generate' %}">Generate Schedule</a></div>
-<div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Run</th><th>Period</th><th>Status</th><th>Assignments</th><th>Warnings</th><th>Created</th><th></th></tr></thead><tbody>{% for run in schedule_runs %}<tr><td>#{{ run.pk }}</td><td>{{ run.start_date }} – {{ run.end_date }}</td><td><span class="badge text-bg-{% if run.status == 'APPROVED' %}success{% elif run.status == 'NEEDS_REVIEW' %}warning{% else %}primary{% endif %}">{{ run.get_status_display }}</span></td><td>{{ run.assignments.count }}</td><td>{{ run.warnings.count }}</td><td>{{ run.created_at|date:"M j, Y H:i" }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'schedule_detail' run.pk %}">Review</a></td></tr>{% empty %}<tr><td class="text-center text-secondary py-5" colspan="7">No schedule runs yet.</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Management</p>
+    <h1 class="h2 mb-1">Schedules</h1>
+    <p class="text-secondary mb-0">
+      {{ total }} run{{ total|pluralize }} in total. Rosters sent to Square appear there
+      as drafts &mdash; publishing them to staff is always a manual step in Square.
+    </p>
+  </div>
+  <a class="btn btn-primary" href="{% url 'schedule_generate' %}">Generate Schedule</a>
+</div>
+
+{% for section in sections %}
+  <div class="d-flex align-items-baseline gap-2 mt-4 mb-2">
+    <h2 class="h5 mb-0">{{ section.title }}</h2>
+    <span class="badge text-bg-{{ section.tone }}">{{ section.runs|length }}</span>
+    <span class="text-secondary small">{{ section.blurb }}</span>
+  </div>
+  <div class="card border-0 shadow-sm"><div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Run</th><th>Period</th><th>Status</th><th class="text-end">Shifts</th><th class="text-end">Warnings</th><th>Created</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for run in section.runs %}
+          <tr{% if section.key == "superseded" %} class="text-secondary"{% endif %}>
+            <td class="text-nowrap">#{{ run.pk }}</td>
+            <td class="text-nowrap">{{ run.start_date|date:"d M Y" }} &ndash; {{ run.end_date|date:"d M Y" }}</td>
+            <td>
+              <span class="badge text-bg-{% if run.status == 'SYNCED_TO_SQUARE' %}success{% elif run.status == 'APPROVED' %}info{% elif run.status == 'NEEDS_REVIEW' %}warning{% elif run.status == 'SUPERSEDED_SOURCE_DATA' %}light border{% else %}primary{% endif %}">{{ run.get_status_display }}</span>
+            </td>
+            <td class="text-end">{{ run.assignment_count }}</td>
+            <td class="text-end">{{ run.warnings.count }}</td>
+            <td class="text-nowrap small">{{ run.created_at|date:"d M Y, H:i" }}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'schedule_detail' run.pk %}">Review</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+{% empty %}
+  <div class="card border-0 shadow-sm"><div class="card-body text-center text-secondary py-5">
+    No schedules yet. <a href="{% url 'schedule_generate' %}">Generate one</a> to begin.
+  </div></div>
+{% endfor %}
 {% endblock %}

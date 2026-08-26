@@ -1,7 +1,81 @@
 {% extends "scheduling/base.html" %}
-{% block title %}Square Integration | Spirit Scheduling Engine{% endblock %}
+{% block title %}Square connection | Spirit Scheduling Engine{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h2 mb-0">Square Connection</h1><a href="{% url 'dashboard' %}">Dashboard</a></div>
-<div class="card border-0 shadow-sm mb-4"><div class="card-body"><p class="text-uppercase text-secondary small fw-semibold mb-2">Environment</p><p class="h4">{{ environment }}</p><p class="mb-0"><span class="status-dot {% if connection_status == 'Connected to Sandbox' %}status-connected{% endif %}"></span>{{ connection_status }}</p>{% if error_message %}<p class="text-danger small mt-3 mb-0">{{ error_message }}</p>{% endif %}</div></div>
-<div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Sandbox locations</h2>{% if locations %}<div class="table-responsive"><table class="table mb-0"><thead><tr><th>Name</th><th>Location ID</th><th>Status</th></tr></thead><tbody>{% for location in locations %}<tr><td>{{ location.name|default:"Unnamed" }}</td><td><code>{{ location.id }}</code></td><td>{{ location.status|default:"Unknown" }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="text-secondary mb-0">No locations loaded. Configure a Sandbox access token to test the connection.</p>{% endif %}</div></div>
+<div class="mb-4">
+  <p class="text-uppercase text-primary fw-semibold small mb-1">Integration</p>
+  <h1 class="h2 mb-1">Square connection</h1>
+  <p class="text-secondary mb-0">Where rosters are sent, as unpublished drafts for review.</p>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <p class="text-uppercase text-secondary small fw-semibold mb-2">Status</p>
+      <p class="h4 mb-2">
+        <span class="status-dot {% if 'Connected' in connection_status %}status-connected{% endif %}"></span>
+        {{ connection_status }}
+      </p>
+      <p class="text-secondary mb-0 small">Environment: <strong>{{ environment }}</strong>
+        {% if location_id %}&middot; Location <code>{{ location_id }}</code>{% endif %}</p>
+      {% if error_message %}<p class="text-danger small mt-3 mb-0">{{ error_message }}</p>{% endif %}
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <p class="text-uppercase text-secondary small fw-semibold mb-2">Access token</p>
+      {% if has_token %}
+        <p class="mb-2">A token is saved on this Mac <span class="text-secondary">(ending {{ token_hint }})</span>.</p>
+        <form method="post" class="d-inline">{% csrf_token %}
+          <input type="hidden" name="action" value="clear_token">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Remove it</button>
+        </form>
+      {% else %}
+        <p class="mb-0 text-secondary">No token saved, so nothing can be sent to Square yet.</p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4"><div class="card-body">
+  <h2 class="h5">{% if has_token %}Replace the access token{% else %}Connect to Square{% endif %}</h2>
+  <p class="text-secondary small">
+    From the Square Developer dashboard, open your application and copy the
+    <strong>production access token</strong>.
+  </p>
+  <form method="post" class="row g-3 align-items-end">{% csrf_token %}
+    <input type="hidden" name="action" value="save_token">
+    <div class="col-md-7">
+      <label class="form-label" for="access_token">Access token</label>
+      <input class="form-control font-monospace" type="password" id="access_token"
+             name="access_token" autocomplete="off" spellcheck="false"
+             placeholder="EAAA…">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" for="environment">Environment</label>
+      <select class="form-select" id="environment" name="environment">
+        <option value="production" {% if selected_environment == 'production' %}selected{% endif %}>Production</option>
+        <option value="sandbox" {% if selected_environment == 'sandbox' %}selected{% endif %}>Sandbox</option>
+      </select>
+    </div>
+    <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Save &amp; test</button></div>
+  </form>
+  <p class="text-secondary small mt-3 mb-0">
+    Stored only on this Mac, in <code>{{ settings_path }}</code>, readable by you alone.
+    It is never shown back in full and never leaves this machine except to Square.
+  </p>
+</div></div>
+
+<div class="card border-0 shadow-sm"><div class="card-body">
+  <h2 class="h5">Locations</h2>
+  {% if locations %}
+    <div class="table-responsive"><table class="table mb-0">
+      <thead><tr><th>Name</th><th>Location ID</th><th>Status</th></tr></thead>
+      <tbody>{% for location in locations %}
+        <tr><td>{{ location.name|default:"Unnamed" }}</td><td><code>{{ location.id }}</code></td><td>{{ location.status|default:"Unknown" }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  {% else %}
+    <p class="text-secondary mb-0">No locations loaded. Save a valid access token above to test the connection.</p>
+  {% endif %}
+</div></div>
 {% endblock %}

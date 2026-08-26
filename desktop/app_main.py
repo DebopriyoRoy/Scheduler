@@ -186,6 +186,9 @@ def configure_django(port: int) -> None:
     # Diagnostic output (calendar screenshots) belongs beside the data, not inside the
     # read-only .app bundle that the working directory points into once installed.
     os.environ.setdefault("SPIRIT_ARTIFACTS_DIR", str(DATA_DIR / "artifacts"))
+    # The Square page writes the access token here rather than asking anyone to edit a
+    # file by hand - impossible anyway once the app is installed and read-only.
+    os.environ.setdefault("SPIRIT_SETTINGS_FILE", str(ENV_PATH))
 
     # User-editable settings file wins for anything it defines.
     if ENV_PATH.exists():

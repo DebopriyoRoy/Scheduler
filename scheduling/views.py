@@ -1,5 +1,6 @@
 import csv
 import logging
+import os
 from datetime import date, datetime
 
 from django.contrib import messages
@@ -112,14 +113,102 @@ def dashboard(request):
             "show_count": Show.objects.filter(active=True).count(),
             "schedule_count": ScheduleRun.objects.count(),
             "square_connection_status": square_context["connection_status"],
+            "square_environment": square_context["environment"],
         },
     )
 
 
 @login_required
 def employees(request):
-    employee_list = Employee.objects.prefetch_related("employee_roles__role")
-    return render(request, "scheduling/employees.html", {"employees": employee_list})
+    """The roster and everyone's usual weekly availability on one page.
+
+    These were two separate pages, which meant answering "can this person work a
+    Thursday?" required holding two screens in your head. Availability is stored per
+    date, so the weekly pattern is derived: for each weekday, the window an employee
+    most commonly holds. That is how Square records it and how management think about
+    it - "Kate does Wednesday evenings" - rather than as several hundred dated rows.
+    """
+    WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+    staff = list(
+        Employee.objects.prefetch_related("employee_roles__role").order_by("display_name")
+    )
+
+    # The most recent entry for each weekday, not the most frequent one. Availability
+    # is stored per date and only the dates a sync covers get refreshed, so history
+    # holds superseded values - Kate's Thursday was recorded as 05:30 before that
+    # transcription was corrected to 17:30. Taking the majority reinstates whichever
+    # version happens to appear most often; taking the latest reflects what is
+    # currently on file, and a change shows up immediately rather than once it has
+    # outnumbered the old value.
+    def describe(entry) -> str:
+        if entry.availability_type == AvailabilityType.AVAILABLE_ALL_DAY:
+            return "All day"
+        if entry.availability_type == AvailabilityType.AVAILABLE_WINDOW:
+            if entry.start_time and entry.end_time:
+                return f"{entry.start_time:%H:%M}-{entry.end_time:%H:%M}"
+            return ""
+        if entry.availability_type == AvailabilityType.UNAVAILABLE:
+            return "Unavailable"
+        return ""  # UNKNOWN: nothing on file for that day
+
+    # Two passes, because the two kinds of record answer different questions.
+    #
+    # A later sync saying UNKNOWN has to be able to clear an earlier "available",
+    # otherwise a retired source keeps asserting hours that no longer exist: six staff
+    # carry rows from a superseded feed claiming they are free all day Monday through
+    # Wednesday, while every current sync reports nothing for them at all and the
+    # engine rightly refuses to schedule them. Showing those stale hours here would
+    # contradict the rest of the application.
+    #
+    # Anything entered by hand outranks all of it. That is the only availability on
+    # file for staff Square knows nothing about, and a sync must never erase it.
+    windows: dict[int, dict[int, str]] = {e.id: {} for e in staff}
+    entries = list(EmployeeAvailability.objects.filter(employee__in=staff).order_by("date"))
+
+    for entry in entries:
+        if entry.source.startswith("LIVE_"):
+            windows[entry.employee_id][entry.date.weekday()] = describe(entry)
+    for entry in entries:
+        if not entry.source.startswith("LIVE_"):
+            text = describe(entry)
+            if text:
+                windows[entry.employee_id][entry.date.weekday()] = text
+
+    rows = []
+    for employee in staff:
+        pattern = []
+        known = 0
+        for index, label in enumerate(WEEKDAYS):
+            text = windows[employee.id].get(index) or ""
+            if text:
+                known += 1
+            pattern.append(
+                {
+                    "day": label,
+                    "text": text,
+                    "unavailable": text == "Unavailable",
+                    "blank": not text,
+                }
+            )
+        rows.append(
+            {
+                "employee": employee,
+                "pattern": pattern,
+                "days_known": known,
+                "roles": list(employee.employee_roles.all()),
+            }
+        )
+
+    return render(
+        request,
+        "scheduling/employees.html",
+        {
+            "rows": rows,
+            "weekdays": WEEKDAYS,
+            "no_availability": [r["employee"].display_name for r in rows if not r["days_known"]],
+        },
+    )
 
 
 @login_required
@@ -133,9 +222,94 @@ def roles(request):
     return render(request, "scheduling/roles.html", {"roles": role_list})
 
 
+def settings_file_path():
+    """Where the Square credentials live: the app's data folder, or the project .env.
+
+    The packaged app points SPIRIT_SETTINGS_FILE at its Application Support folder,
+    because its own directory is read-only once installed.
+    """
+    from pathlib import Path
+
+    configured = os.getenv("SPIRIT_SETTINGS_FILE")
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parent.parent / ".env"
+
+
+def _write_setting(name: str, value: str) -> None:
+    """Set one key in the settings file, leaving every other line untouched."""
+    path = settings_file_path()
+    lines = path.read_text().splitlines() if path.exists() else []
+    replaced = False
+    for index, line in enumerate(lines):
+        if line.strip().startswith(f"{name}="):
+            lines[index] = f"{name}={value}"
+            replaced = True
+            break
+    if not replaced:
+        lines.append(f"{name}={value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o600)  # credentials: readable only by this user
+    os.environ[name] = value
+
+
 @login_required
 def square_integration(request):
-    return render(request, "scheduling/square_integration.html", square_connection_context())
+    """Square connection status, and where the access token is entered.
+
+    The token used to be settable only by hand-editing a file inside the application
+    folder, which is not a reasonable thing to ask and is impossible once the app is
+    installed and read-only. It is written to the settings file with owner-only
+    permissions and never displayed back in full.
+    """
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "save_token":
+            token = (request.POST.get("access_token") or "").strip()
+            environment = request.POST.get("environment", "production").strip().lower()
+            if environment not in {"sandbox", "production"}:
+                environment = "production"
+            if not token:
+                messages.error(request, "Paste an access token before saving.")
+            else:
+                key = (
+                    "SQUARE_PRODUCTION_ACCESS_TOKEN"
+                    if environment == "production"
+                    else "SQUARE_SANDBOX_ACCESS_TOKEN"
+                )
+                _write_setting(key, token)
+                _write_setting("SQUARE_ENVIRONMENT", environment)
+                messages.success(
+                    request,
+                    f"Saved. Testing the {environment} connection now - the result is below.",
+                )
+        elif action == "clear_token":
+            _write_setting("SQUARE_PRODUCTION_ACCESS_TOKEN", "")
+            messages.success(request, "Production access token removed from this Mac.")
+        return redirect("square_integration")
+
+    context = square_connection_context()
+    config = None
+    try:
+        config = SquareConfig.from_env()
+    except SquareIntegrationError:
+        pass
+
+    token = (getattr(config, "production_access_token", "") or "") if config else ""
+    context.update(
+        {
+            "has_token": bool(token),
+            # Enough to confirm which token is loaded, never enough to reuse it.
+            "token_hint": f"...{token[-4:]}" if len(token) >= 4 else "",
+            "settings_path": str(settings_file_path()),
+            "selected_environment": (
+                config.environment.value if config else "production"
+            ),
+            "location_id": getattr(config, "location_id", "") if config else "",
+        }
+    )
+    return render(request, "scheduling/square_integration.html", context)
 
 
 @login_required
@@ -436,10 +610,72 @@ def _generation_summary(start_date: date, end_date: date) -> dict:
 
 @login_required
 def schedule_list(request):
+    """Schedules grouped by what has actually happened to them.
+
+    A flat list of every run gave no way to tell a roster already sitting in Square
+    from a half-finished draft or something long superseded - they all looked alike,
+    and there have been enough runs for the same dates that picking the live one
+    mattered.
+    """
+    today = date.today()
+    runs = (
+        ScheduleRun.objects.select_related("created_by", "approved_by")
+        .annotate(assignment_count=Count("assignments"))
+        .order_by("-start_date", "-id")
+    )
+
+    groups = {"posted": [], "in_progress": [], "past": [], "superseded": []}
+    for run in runs:
+        upcoming = run.end_date >= today
+        if run.status == ScheduleRunStatus.SUPERSEDED_SOURCE_DATA:
+            key = "superseded"
+        elif run.status == ScheduleRunStatus.SYNCED_TO_SQUARE:
+            key = "posted" if upcoming else "past"
+        elif not upcoming:
+            key = "past"
+        else:
+            key = "in_progress"
+        groups[key].append(run)
+
+    sections = [
+        {
+            "key": "posted",
+            "title": "In Square",
+            "blurb": "Sent to Square as drafts. Publishing to staff stays a manual step there.",
+            "tone": "success",
+            "runs": groups["posted"],
+        },
+        {
+            "key": "in_progress",
+            "title": "In progress",
+            "blurb": "Upcoming periods still being built, reviewed or approved.",
+            "tone": "primary",
+            "runs": groups["in_progress"],
+        },
+        {
+            "key": "past",
+            "title": "Past periods",
+            "blurb": "Finished periods, kept for the fairness history they feed.",
+            "tone": "secondary",
+            "runs": groups["past"],
+        },
+        {
+            "key": "superseded",
+            "title": "Superseded",
+            "blurb": "Replaced by a later run for the same dates. Never sent anywhere.",
+            "tone": "light",
+            "runs": groups["superseded"],
+        },
+    ]
+
     return render(
         request,
         "scheduling/schedule_list.html",
-        {"schedule_runs": ScheduleRun.objects.select_related("created_by", "approved_by")},
+        {
+            "sections": [s for s in sections if s["runs"]],
+            "total": runs.count(),
+            "today": today,
+        },
     )
 
 
