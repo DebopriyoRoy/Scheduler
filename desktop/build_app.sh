@@ -33,39 +33,22 @@ mkdir -p build; rm -rf build "dist/Spirit Scheduler.app" "dist/Spirit Scheduler"
   }
 echo "   done ($(du -sh "dist/Spirit Scheduler.app" | cut -f1))"
 
-echo "3. Building disk image"
+echo "3. Signing"
+# Ad-hoc signature. This does not satisfy Gatekeeper on its own - only Apple
+# notarization does, which needs a paid Developer account - but it makes the bundle
+# internally consistent, so macOS reports it as "unidentified developer" rather than
+# the far more alarming and unrecoverable "app is damaged".
+codesign --force --deep --sign - --timestamp=none "dist/Spirit Scheduler.app" 2>/dev/null
+codesign --verify --deep --strict "dist/Spirit Scheduler.app" 2>/dev/null \
+  && echo "   signed (ad-hoc)" || echo "   WARNING: signature could not be verified"
+
+echo "4. Building disk image"
 DMG="dist/Spirit Scheduler.dmg"
 rm -f "$DMG"
 STAGE="$(mktemp -d)"
 cp -R "dist/Spirit Scheduler.app" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-cat > "$STAGE/READ ME.txt" <<'EOF'
-SPIRIT SCHEDULER
-================
-
-TO INSTALL
-  Drag "Spirit Scheduler" onto the Applications folder shown here.
-
-TO RUN
-  Open Applications and double-click Spirit Scheduler.
-  Your browser opens automatically.
-
-  The FIRST time only, macOS will say the app is from an unidentified
-  developer. Right-click the app, choose Open, then choose Open again.
-  This happens once.
-
-TO SIGN IN
-  Username: manager
-  Password: spirit
-
-  Change this after the first sign-in.
-
-YOUR DATA
-  Everything is stored in your home folder under
-  Library/Application Support/Spirit Scheduler
-
-  Reinstalling or updating the app never touches it.
-EOF
+cp "$REPO/packaging/READ-ME-FIRST.txt" "$STAGE/READ ME FIRST.txt"
 
 hdiutil create -volname "Spirit Scheduler" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"

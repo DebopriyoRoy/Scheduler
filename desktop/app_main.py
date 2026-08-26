@@ -23,6 +23,7 @@ DATA_DIR = Path.home() / "Library" / "Application Support" / APP_NAME
 DB_PATH = DATA_DIR / "db.sqlite3"
 KEY_PATH = DATA_DIR / "secret_key"
 ENV_PATH = DATA_DIR / "settings.env"
+LOG_PATH = DATA_DIR / "app.log"
 
 # Where Chromium lives. Pinned explicitly and set before anything touches Playwright,
 # because the default inside a frozen app is a folder within the .app bundle itself:
@@ -30,6 +31,52 @@ ENV_PATH = DATA_DIR / "settings.env"
 # the two never meet. The bundle is read-only in any case.
 BROWSER_DIR = Path.home() / "Library" / "Caches" / "ms-playwright"
 os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(BROWSER_DIR))
+
+
+def start_logging() -> None:
+    """Mirror everything the app prints into a log file beside its data.
+
+    Launched from Finder there is no terminal attached, so stdout goes nowhere: a
+    startup failure leaves nothing behind but a dock icon that disappears. Writing to
+    a file means a failure can actually be diagnosed afterwards.
+    """
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        if LOG_PATH.exists() and LOG_PATH.stat().st_size > 2_000_000:
+            LOG_PATH.replace(LOG_PATH.with_suffix(".log.previous"))
+        stream = LOG_PATH.open("a", buffering=1, encoding="utf-8")
+    except OSError:
+        return
+
+    class _Tee:
+        def __init__(self, *targets):
+            self.targets = [t for t in targets if t is not None]
+
+        def write(self, text):
+            for t in self.targets:
+                try:
+                    t.write(text)
+                except Exception:
+                    pass
+            return len(text)
+
+        def flush(self):
+            for t in self.targets:
+                try:
+                    t.flush()
+                except Exception:
+                    pass
+
+    sys.stdout = _Tee(sys.stdout, stream)
+    sys.stderr = _Tee(sys.stderr, stream)
+    stream.write(f"\n=== Spirit Scheduler started {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+
+    def _log_uncaught(exc_type, exc, tb):
+        import traceback
+
+        traceback.print_exception(exc_type, exc, tb, file=sys.stderr)
+
+    sys.excepthook = _log_uncaught
 
 
 def bundle_dir() -> Path:
@@ -154,11 +201,53 @@ def configure_django(port: int) -> None:
 
 
 def open_when_ready(url: str, port: int) -> None:
-    for _ in range(80):
+    """Open the interface once the server answers, and say so if it cannot.
+
+    The app has no window of its own - the browser tab is the interface - so a failure
+    to open one looks exactly like the app not starting: a dock icon and nothing else.
+    Allow a generous startup window, fall back to macOS's own opener, and if both fail
+    put the address on screen rather than leaving the user staring at nothing.
+    """
+    import subprocess
+
+    for _ in range(240):  # up to 60s; first run also applies migrations
         if already_running(port):
-            webbrowser.open(url)
-            return
+            break
         time.sleep(0.25)
+    else:
+        _alert(
+            "Spirit Scheduler could not start.",
+            f"Details were written to:\n{LOG_PATH}",
+        )
+        return
+
+    if webbrowser.open(url):
+        return
+    try:
+        if subprocess.run(["/usr/bin/open", url], check=False).returncode == 0:
+            return
+    except OSError:
+        pass
+    _alert("Spirit Scheduler is running.", f"Open this address in your browser:\n{url}")
+
+
+def _alert(title: str, message: str) -> None:
+    """A plain macOS dialog. Best effort - never allowed to raise."""
+    import subprocess
+
+    try:
+        subprocess.run(
+            [
+                "/usr/bin/osascript",
+                "-e",
+                f'display dialog {message!r} with title {title!r} '
+                'buttons {"OK"} default button "OK" with icon note',
+            ],
+            check=False,
+            timeout=120,
+        )
+    except Exception:
+        print(f"{title} {message}")
 
 
 def run_calendar_sync(start: str, end: str) -> int:
@@ -191,6 +280,7 @@ def run_calendar_sync(start: str, end: str) -> int:
 
 
 def main() -> int:
+    start_logging()
     if len(sys.argv) >= 4 and sys.argv[1] == "--sync-calendar":
         return run_calendar_sync(sys.argv[2], sys.argv[3])
 

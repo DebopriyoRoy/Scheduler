@@ -88,11 +88,12 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="Spirit Scheduler.app",
-    icon=None,
+    icon=str(REPO / "desktop" / "SpiritScheduler.icns"),
     bundle_identifier="com.spiritofnewfoundland.scheduler",
     info_plist={
         "CFBundleName": "Spirit Scheduler",
         "CFBundleDisplayName": "Spirit Scheduler",
+        "CFBundleIconFile": "SpiritScheduler.icns",
         "CFBundleShortVersionString": "1.0.0",
         "CFBundleVersion": "1.0.0",
         "NSHighResolutionCapable": True,

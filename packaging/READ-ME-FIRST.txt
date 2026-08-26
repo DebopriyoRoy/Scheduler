@@ -1,62 +1,61 @@
-SPIRIT SCHEDULING ENGINE
-========================
-
-TO INSTALL (once per Mac)
--------------------------
-1. Double-click  INSTALL.command
-2. If macOS says the file is from an unidentified developer:
-      right-click it -> Open -> Open
-3. Follow the prompts. It takes about five minutes.
-4. When it finishes you can eject this drive.
-
-You will be asked for a Square access token. Leave it blank if you only want to
-show the application - everything works except syncing to Square.
-
-You will also be asked to create the username and password you sign in with.
+SPIRIT SCHEDULER
+================
 
 
-TO RUN
-------
-Open the SpiritScheduler folder in your home directory and double-click
-START.command. Your browser opens automatically.
-
-Leave the black terminal window open while you use the application.
-Closing it stops the application.
+STEP 1  -  INSTALL
+------------------
+Drag "Spirit Scheduler" onto the Applications folder shown beside it.
 
 
-TO BACK UP
-----------
-Double-click BACKUP.command with this USB drive plugged in. It copies the
-database to a backups folder on the drive, stamped with the date.
+STEP 2  -  ALLOW IT TO RUN  (once, and it is required)
+------------------------------------------------------
+This app is not registered with Apple, so macOS blocks it the first time.
+It will simply not open, with no error and no message.
 
-The database file is the only irreplaceable part of the installation. It holds
-every show, roster, availability record and audit note.
+Open the Terminal app and paste this one line, then press Return:
+
+    xattr -dr com.apple.quarantine "/Applications/Spirit Scheduler.app"
+
+Nothing is printed if it works. You only ever do this once.
+
+  (To find Terminal: press Command + Space, type Terminal, press Return.)
+
+If you would rather not use Terminal: double-click the app, then open
+System Settings > Privacy & Security, scroll to the bottom, and click
+"Open Anyway" next to the message about Spirit Scheduler. Then open the
+app again.
 
 
-WHAT IS ON THIS DRIVE
+STEP 3  -  RUN IT
+-----------------
+Open Applications and double-click Spirit Scheduler.
+Your browser opens automatically at the dashboard.
+
+    Username:  manager
+    Password:  spirit
+
+Change the password after signing in.
+
+The first launch takes about a minute: it prepares the database and
+downloads the browser engine used to read the show calendar. Later
+launches are immediate.
+
+
+WHERE YOUR DATA LIVES
 ---------------------
-  INSTALL.command   installer
-  START.command     launcher
-  BACKUP.command    database backup
-  source/           application code
-  db.sqlite3        the database
+    Home folder > Library > Application Support > Spirit Scheduler
 
-There are no passwords or access tokens on this drive. They are entered during
-installation and stored only on the Mac you install to.
+That folder holds the database, your settings, and app.log. Installing a
+newer version never touches any of it.
+
+To enable syncing with Square, open settings.env in that folder with
+TextEdit and paste your Square access token after
+SQUARE_PRODUCTION_ACCESS_TOKEN= then restart the app.
 
 
 IF SOMETHING GOES WRONG
 -----------------------
-"Python 3.12 or newer was not found"
-      Install from https://www.python.org/downloads/macos/ and run
-      INSTALL.command again.
+Read app.log in the folder above - it records every startup and every
+error. Send it on and the problem can be identified from it.
 
-The page loads but looks unstyled
-      The interface uses Bootstrap from the internet. Check the connection.
-
-Calendar sync fails
-      Open Terminal and run:
-      ~/SpiritScheduler/.venv/bin/python -m playwright install chromium
-
-Reinstalling does not erase your data. The installer keeps any existing
-database, settings and login it finds.
+Nothing on this disk image contains passwords or access tokens.
