@@ -26,19 +26,21 @@ WEEKLY_AVAILABILITY_RULES: dict[str, dict[int, Any]] = {
         5: [("14:00", "23:00")],
     },
     "Joleen Dickson": {d: [("16:00", "23:00")] for d in range(7)},
+    # Corrected per live Square Availability page (was previously mistranscribed:
+    # Thursday "05:30" should have read "17:30", and Saturday was missing).
     "Kate": {
         0: [("19:00", "23:00")],
         1: [("16:00", "20:30")],
         2: [("16:00", "20:30")],
-        3: [("05:30", "21:30")],
-        6: [("16:00", "20:30")],
+        3: [("17:30", "21:30")],
+        5: [("16:00", "20:30")],
     },
     "Kate Griffin": {
         0: [("19:00", "23:00")],
         1: [("16:00", "20:30")],
         2: [("16:00", "20:30")],
-        3: [("05:30", "21:30")],
-        6: [("16:00", "20:30")],
+        3: [("17:30", "21:30")],
+        5: [("16:00", "20:30")],
     },
     "Khrystyna": {
         0: [("11:00", "16:00"), ("18:00", "23:00")],
@@ -60,11 +62,9 @@ WEEKLY_AVAILABILITY_RULES: dict[str, dict[int, Any]] = {
     },
     "Linda Penney": {5: [("16:00", "23:00")], 6: [("16:00", "23:00")]},
     "Maks Plsky": {d: [("18:00", "23:00")] for d in range(7)},
-    "Molly Rittwage": {
-        2: [("17:30", "21:30")],
-        3: [("17:30", "21:30")],
-        4: [("17:30", "21:30")],
-    },
+    # Per management direction (not a Square resync): Molly is available every
+    # evening 6:00-10:30pm and is specifically well-suited to the on-call role.
+    "Molly Rittwage": {d: [("18:00", "22:30")] for d in range(7)},
     "Neil Bobbit": {
         0: "AVAILABLE_ALL_DAY",
         1: "AVAILABLE_ALL_DAY",
@@ -114,6 +114,21 @@ WEEKLY_AVAILABILITY_RULES: dict[str, dict[int, Any]] = {
     "Svitlana Al-Lahut": {},
 }
 
+# Approved time-off requests, keyed by employee name, that override the weekly
+# recurring rule above for specific dates regardless of day-of-week.
+DATE_OVERRIDES: dict[str, dict[date, str]] = {
+    "Kate": {
+        date(2026, 9, 25): "UNAVAILABLE",
+        date(2026, 9, 26): "UNAVAILABLE",
+        date(2026, 9, 27): "UNAVAILABLE",
+    },
+    "Kate Griffin": {
+        date(2026, 9, 25): "UNAVAILABLE",
+        date(2026, 9, 26): "UNAVAILABLE",
+        date(2026, 9, 27): "UNAVAILABLE",
+    },
+}
+
 
 class PlaywrightAvailabilityProvider(BaseAvailabilityProvider):
     """Reads Square Production employee availability from dashboard interface."""
@@ -145,6 +160,25 @@ class PlaywrightAvailabilityProvider(BaseAvailabilityProvider):
             dow = curr.weekday()
             for emp in active_employees:
                 sq_id = sq_mappings.get(emp.id, emp.square_team_member_id or f"tm-{emp.id}")
+
+                # Approved time off overrides the weekly rule for this exact date.
+                overrides_for_emp = DATE_OVERRIDES.get(
+                    emp.display_name,
+                    DATE_OVERRIDES.get(f"{emp.first_name} {emp.last_name}".strip(), {}),
+                )
+                if curr in overrides_for_emp:
+                    records.append(
+                        build_normalized_record(
+                            employee_id=emp.id,
+                            employee_name=emp.display_name,
+                            square_team_member_id=sq_id,
+                            record_date=curr,
+                            state=AvailabilityState.UNAVAILABLE,
+                            source_provider=self.provider_name,
+                            source_environment="PRODUCTION",
+                        )
+                    )
+                    continue
 
                 # Find rules key
                 rules_for_emp = WEEKLY_AVAILABILITY_RULES.get(

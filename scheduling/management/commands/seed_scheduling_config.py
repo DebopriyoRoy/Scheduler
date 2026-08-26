@@ -1,7 +1,10 @@
 from datetime import time
+from functools import reduce
+from operator import or_
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Q
 
 from scheduling.models import AssignmentType, Role, ShiftTemplate, StaffingRule
 
@@ -54,14 +57,100 @@ SHIFT_TEMPLATES = (
         0,
         80,
     ),
+    # Surge positions. These stay dormant at the 75-80 guest buffer and only become
+    # live slots once the guest count climbs the staffing ladder below (Christmas and
+    # other full-house nights). position_order keeps them behind the standing crew so
+    # templates_for_requirement() fills core positions first.
+    ("server-4", "Server 4", "Server", AssignmentType.CONFIRMED, time(17), time(23), 6, 0, 32),
+    ("server-5", "Server 5", "Server", AssignmentType.CONFIRMED, time(17), time(23), 6, 0, 34),
+    ("server-6", "Server 6", "Server", AssignmentType.CONFIRMED, time(17), time(23), 6, 0, 36),
+    (
+        "on-call-server-2",
+        "On-call Server 2",
+        "Server",
+        AssignmentType.ON_CALL,
+        time(17, 30),
+        time(23),
+        0,
+        5.5,
+        42,
+    ),
+    (
+        "on-call-server-3",
+        "On-call Server 3",
+        "Server",
+        AssignmentType.ON_CALL,
+        time(17, 30),
+        time(23),
+        0,
+        5.5,
+        44,
+    ),
+    (
+        "bartender-2",
+        "Bartender 2",
+        "Bartender",
+        AssignmentType.CONFIRMED,
+        time(15),
+        time(21),
+        6,
+        0,
+        52,
+    ),
+    (
+        "bartender-3",
+        "Bartender 3",
+        "Bartender",
+        AssignmentType.CONFIRMED,
+        time(15),
+        time(21),
+        6,
+        0,
+        54,
+    ),
+    (
+        "on-call-bartender-2",
+        "On-call Bartender 2",
+        "Bartender",
+        AssignmentType.ON_CALL,
+        time(17, 30),
+        time(23),
+        0,
+        5.5,
+        62,
+    ),
+    (
+        "busser-2",
+        "Busser 2",
+        "Busser",
+        AssignmentType.CONFIRMED,
+        time(18),
+        time(21, 30),
+        3.5,
+        0,
+        72,
+    ),
 )
 
 
-STAFFING_RULES = (
-    ("Server", 3, 1),
-    ("Bartender", 1, 1),
-    ("Busser", 1, 0),
-    ("50/50", 1, 0),
+# Staffing ladder, keyed on the show's planning guest count.
+#
+# Servers follow the one-per-25-guests floor rule: confirmed servers are
+# floor(guests / 25), clamped to [MINIMUM_CONFIRMED_SERVERS, MAXIMUM_CONFIRMED_SERVERS].
+# Because a show under 75 guests is cancelled or its guests are moved, the bottom band
+# starts at 75 and never yields fewer than three confirmed servers. The top band matches
+# the full-house crew management actually runs at Christmas: 6 confirmed servers plus 3
+# on-call, and 3 confirmed bartenders plus 2 on-call.
+#
+# Bartenders and bussers are per-show roles rather than per-guest roles: one of each
+# covers the room from 75 guests, and the count steps up as the ladder climbs.
+#
+# (min_guests, max_guests, {role: (confirmed_count, on_call_count)})
+STAFFING_LADDER = (
+    (75, 99, {"Server": (3, 1), "Bartender": (1, 1), "Busser": (1, 0), "50/50": (1, 0)}),
+    (100, 124, {"Server": (4, 1), "Bartender": (2, 1), "Busser": (1, 0), "50/50": (1, 0)}),
+    (125, 149, {"Server": (5, 2), "Bartender": (2, 2), "Busser": (2, 0), "50/50": (1, 0)}),
+    (150, 175, {"Server": (6, 3), "Bartender": (3, 2), "Busser": (2, 0), "50/50": (1, 0)}),
 )
 
 
@@ -99,20 +188,36 @@ class Command(BaseCommand):
                     "active": True,
                 },
             )
-        for role_name, confirmed_count, on_call_count in STAFFING_RULES:
-            StaffingRule.objects.update_or_create(
-                role=roles[role_name],
-                minimum_guests=1,
-                maximum_guests=100,
-                defaults={
-                    "confirmed_count": confirmed_count,
-                    "on_call_count": on_call_count,
-                    "active": True,
-                },
+        # Retire any ladder band that is no longer part of the approved shape (for
+        # example the original flat 1-100 band) so a stale rule cannot shadow the new
+        # ladder in staffing_requirements_for().
+        keep_bands = {(low, high) for low, high, _ in STAFFING_LADDER}
+        stale = StaffingRule.objects.filter(active=True).exclude(
+            reduce(
+                or_,
+                (Q(minimum_guests=low, maximum_guests=high) for low, high in keep_bands),
             )
+        )
+        retired = stale.update(active=False)
+
+        rule_count = 0
+        for minimum_guests, maximum_guests, role_counts in STAFFING_LADDER:
+            for role_name, (confirmed_count, on_call_count) in role_counts.items():
+                StaffingRule.objects.update_or_create(
+                    role=roles[role_name],
+                    minimum_guests=minimum_guests,
+                    maximum_guests=maximum_guests,
+                    defaults={
+                        "confirmed_count": confirmed_count,
+                        "on_call_count": on_call_count,
+                        "active": True,
+                    },
+                )
+                rule_count += 1
         self.stdout.write(
             self.style.SUCCESS(
-                f"Scheduling configuration ready: {len(SHIFT_TEMPLATES)} shifts and "
-                f"{len(STAFFING_RULES)} staffing rules."
+                f"Scheduling configuration ready: {len(SHIFT_TEMPLATES)} shift templates, "
+                f"{rule_count} staffing rules across {len(STAFFING_LADDER)} guest bands "
+                f"({retired} stale rule(s) retired)."
             )
         )

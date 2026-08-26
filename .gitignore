@@ -16,3 +16,6 @@ work/
 outputs/
 staticfiles/
 
+
+# macOS AppleDouble resource-fork metadata
+._*

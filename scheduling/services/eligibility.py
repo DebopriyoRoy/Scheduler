@@ -22,6 +22,12 @@ EXCLUDED_MANAGER_NAMES = {
     "john harris",
 }
 
+# Roles that involve serving or handling alcohol; bussers (under 19) are barred
+# from all of them regardless of any other role they hold.
+ALCOHOL_ADJACENT_ROLES = {"Server", "Bartender", "50/50"}
+
+MIN_LEAD_SERVER_CAPABILITY_LEVEL = 4
+
 
 @dataclass(frozen=True)
 class EligibilityResult:
@@ -51,14 +57,42 @@ class EligibilityService:
             or employee.display_name.strip().casefold() in EXCLUDED_MANAGER_NAMES
         ):
             reasons.append("Employee is explicitly excluded from automatic scheduling.")
-        if not employee.employee_roles.filter(role=role, active=True).exists():
+        employee_role = employee.employee_roles.filter(role=role, active=True).first()
+        if employee_role is None:
             reasons.append(f"Employee is not qualified for the {role.name} role.")
+
+        # Bussers are the under-19 role and cannot hold any alcohol-service or
+        # server-facing position, even if a data-entry error ever grants them one.
+        if role.name in ALCOHOL_ADJACENT_ROLES and employee.employee_roles.filter(
+            role__name="Busser", active=True
+        ).exists():
+            reasons.append(
+                "Bussers are under the legal drinking age and cannot be scheduled "
+                "for alcohol-service or server roles."
+            )
+
+        # Lead Server requires a fully cross-trained employee (Level 4/5) who can run
+        # setup and service without supervision.
+        if (
+            shift_template.code == "lead-server"
+            and employee_role is not None
+            and employee_role.capability_level < MIN_LEAD_SERVER_CAPABILITY_LEVEL
+        ):
+            reasons.append(
+                f"Lead Server requires capability Level {MIN_LEAD_SERVER_CAPABILITY_LEVEL} "
+                f"or 5 (employee is Level {employee_role.capability_level})."
+            )
+
+        # Use the actual computed shift window (anchored to this show's own
+        # doors-open/wrap-up time), not the shift template's static clock time.
+        shift_start_time = start_datetime.time()
+        shift_end_time = end_datetime.time()
 
         availability = self.availability_provider.check(
             employee,
             show.date,
-            shift_template.start_time,
-            shift_template.end_time,
+            shift_start_time,
+            shift_end_time,
         )
         if not availability.available:
             reasons.extend(availability.reasons)
@@ -66,8 +100,8 @@ class EligibilityService:
         office_conflict = OfficeAssignment.objects.filter(
             employee=employee,
             date=show.date,
-            start_time__lt=shift_template.end_time,
-            end_time__gt=shift_template.start_time,
+            start_time__lt=shift_end_time,
+            end_time__gt=shift_start_time,
         ).exists()
         if office_conflict:
             reasons.append("Office assignment overlaps this shift.")

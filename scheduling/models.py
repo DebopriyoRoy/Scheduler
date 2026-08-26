@@ -7,7 +7,25 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 MAX_THEATRE_CAPACITY = 175
-DEFAULT_EXPECTED_GUESTS = 100
+
+# Real operating economics of the room, per management direction.
+#
+# A show below MINIMUM_VIABLE_GUESTS is not run: management either cancels it or moves
+# those guests onto another date. 75-80 is the working buffer management plans against,
+# so an unpriced show is planned at GUEST_COUNT_PLANNING_BUFFER rather than at an
+# optimistic round number - planning high would over-hire, planning below 75 would
+# imply a show that does not run.
+MINIMUM_VIABLE_GUESTS = 75
+GUEST_COUNT_PLANNING_BUFFER = 80
+DEFAULT_EXPECTED_GUESTS = GUEST_COUNT_PLANNING_BUFFER
+
+# Floor coverage ratio: one server per GUESTS_PER_SERVER guests. Because a show never
+# runs below 75 guests, MINIMUM_CONFIRMED_SERVERS is a hard floor on every show that
+# runs at all. At full house management caps confirmed servers and absorbs the rest
+# through on-call, so the ladder tops out at MAXIMUM_CONFIRMED_SERVERS.
+GUESTS_PER_SERVER = 25
+MINIMUM_CONFIRMED_SERVERS = 3
+MAXIMUM_CONFIRMED_SERVERS = 6
 
 
 class AvailabilityType(models.TextChoices):

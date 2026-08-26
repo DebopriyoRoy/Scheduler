@@ -607,15 +607,19 @@ def create_production_pilot_shift(
         "employee", "role", "show", "shift_template"
     ).get(pk=assignment_id, schedule_run=schedule_run)
 
+    # MAPPED_EXACT is a successful mapping too. preview_production_sync() already
+    # treats both as usable, so filtering to MAPPED alone here let an assignment
+    # preview as READY_TO_CREATE and then fail mid-sync, leaving a partially
+    # written roster in Square.
     emp_map = SquareEmployeeMapping.objects.filter(
         employee=assignment.employee,
         environment=SquareEnvironment.PRODUCTION.value,
-        status=MappingStatus.MAPPED,
+        status__in=[MappingStatus.MAPPED, MappingStatus.MAPPED_EXACT],
     ).first()
     role_map = SquareRoleMapping.objects.filter(
         role=assignment.role,
         environment=SquareEnvironment.PRODUCTION.value,
-        status=MappingStatus.MAPPED,
+        status__in=[MappingStatus.MAPPED, MappingStatus.MAPPED_EXACT],
     ).first()
     loc_map = SquareLocationMapping.objects.filter(
         environment=SquareEnvironment.PRODUCTION.value,

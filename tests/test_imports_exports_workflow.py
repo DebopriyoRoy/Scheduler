@@ -44,10 +44,12 @@ def management_user(db):
 
 
 def generated_run(staff, *, requires_50_50=True):
+    # 80 guests is the standard band: 3 confirmed servers, 1 on-call, 1 bartender +
+    # 1 on-call, 1 busser, 1 50/50 - eight positions on an ordinary night.
     show = Show.objects.create(
         title="Forever Country",
         date=date(2026, 9, 12),
-        expected_guests=100,
+        expected_guests=80,
         requires_50_50=requires_50_50,
     )
     for employee in staff:
@@ -154,8 +156,10 @@ def test_excel_csv_and_pdf_exports_are_complete(staff_and_config):
     assert workbook["Schedule"]["C2"].value == show.title
     assert workbook["Detailed Assignments"].max_row == 9
     detailed_rows = list(workbook["Detailed Assignments"].iter_rows(values_only=True))
-    lead_row = next(row for row in detailed_rows if row[3] == "Server" and row[5] == "15:00")
-    assert lead_row[6] == "21:30"
+    # Lead Server comes in 45 minutes before this show's doors (18:30) and leaves
+    # 15 minutes after wrap (22:30).
+    lead_row = next(row for row in detailed_rows if row[3] == "Server" and row[5] == "17:45")
+    assert lead_row[6] == "22:45"
     assert workbook["Employee Totals"].max_row == 18
     assert "Forever Country" in detailed_schedule_csv(run)
     pdf = schedule_pdf_bytes(run)
