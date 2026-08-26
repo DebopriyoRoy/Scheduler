@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from integrations.square import SquareClient, SquareConfig, SquareEnvironment
 from integrations.square.exceptions import SquareIntegrationError
@@ -31,6 +32,7 @@ from scheduling.importers.availability import (
 )
 from scheduling.importers.calendar import SpiritCalendarImporter
 from scheduling.models import (
+    DEFAULT_EXPECTED_GUESTS,
     AvailabilityType,
     Employee,
     EmployeeAvailability,
@@ -135,10 +137,44 @@ def square_integration(request):
 
 @login_required
 def show_list(request):
+    """List shows, scoped to a date range and hiding retired rows by default.
+
+    Deactivated shows are kept forever because approved schedules reference them, but
+    listing every one of them alongside the live show for the same night made the page
+    look like it held three copies of each event.
+    """
+    start = _parse_optional_date(request.GET.get("start"))
+    end = _parse_optional_date(request.GET.get("end"))
+    include_inactive = request.GET.get("inactive") == "1"
+
+    shows = Show.objects.all()
+    if not include_inactive:
+        shows = shows.filter(active=True)
+    if start and end:
+        if end < start:
+            start, end = end, start
+        shows = shows.filter(date__range=(start, end))
+
+    initial = {}
+    if start:
+        initial["start_date"] = start
+    if end:
+        initial["end_date"] = end
+
     return render(
         request,
         "scheduling/show_list.html",
-        {"shows": Show.objects.all(), "import_form": CalendarImportForm()},
+        {
+            "shows": shows.order_by("date", "start_time"),
+            "import_form": CalendarImportForm(initial=initial or None),
+            "filter_start": start,
+            "filter_end": end,
+            "include_inactive": include_inactive,
+            "hidden_count": (
+                Show.objects.filter(active=False).count() if not include_inactive else 0
+            ),
+            "default_guests": DEFAULT_EXPECTED_GUESTS,
+        },
     )
 
 
@@ -168,24 +204,36 @@ def show_import(request):
     if request.method != "POST":
         return redirect("show_list")
     form = CalendarImportForm(request.POST)
-    if form.is_valid():
-        try:
-            summary = SpiritCalendarImporter().import_range(
-                form.cleaned_data["start_date"], form.cleaned_data["end_date"]
-            )
-            messages.success(
-                request,
-                f"Calendar import: {summary.created} created and {summary.updated} updated. "
-                "No manual show was deleted.",
-            )
-        except (requests.RequestException, ValueError) as exc:
-            messages.error(
-                request,
-                f"The public calendar could not be imported: {exc}. Use Add Show as a fallback.",
-            )
-    else:
+    if not form.is_valid():
         messages.error(request, "Correct the import date range and try again.")
-    return redirect("show_list")
+        return redirect("show_list")
+
+    start = form.cleaned_data["start_date"]
+    end = form.cleaned_data["end_date"]
+    try:
+        summary = SpiritCalendarImporter().import_range(start, end)
+        messages.success(
+            request,
+            f"Imported {start:%d %b %Y} to {end:%d %b %Y} from the live calendar: "
+            f"{summary.created} added, {summary.updated} updated. "
+            "Nothing was duplicated or deleted.",
+        )
+    except (requests.RequestException, ValueError) as exc:
+        messages.error(request, f"The live calendar could not be read: {exc}")
+        return redirect("show_list")
+
+    # Return to the list showing exactly the dates that were just imported.
+    return redirect(f"{reverse('show_list')}?start={start:%Y-%m-%d}&end={end:%Y-%m-%d}")
+
+
+def _parse_optional_date(value: str | None) -> date | None:
+    """Parse a date filter, returning None when absent or unparseable."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 def _parse_selected_date(value: str | None) -> date:

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from io import BytesIO
 
 import pytest
@@ -302,3 +302,97 @@ def test_demo_seed_is_idempotent_and_clearly_isolated():
     assert not Show.objects.exclude(source=Show.Source.DEMO).exists()
     assert EmployeeAvailability.objects.count() == 102
     assert not EmployeeAvailability.objects.exclude(source="DEMO").exists()
+
+
+@pytest.mark.django_db
+def test_import_adopts_an_existing_show_when_the_external_id_changes():
+    """A changed calendar id must update the night, not add a second copy of it.
+
+    The show list had grown three rows per date because the same real show arrived
+    under three different external_id schemes over time - a demo seed, an older
+    title-slug importer, and the current one - and keying only on external_id made
+    each of them a fresh row.
+    """
+    existing = Show.objects.create(
+        title="Forever Country",
+        date=date(2026, 9, 12),
+        start_time=time(18, 30),
+        end_time=time(22, 0),
+        external_id="spirit-occ-forever-country-old-scheme",
+        source=Show.Source.CALENDAR_IMPORT,
+        active=True,
+    )
+
+    html = """
+    <html><script type="application/ld+json">
+    {"@type":"Event","name":"Forever Country... in the Key of Spirit!!",
+    "startDate":"2026-09-12T18:30:00-02:30","endDate":"2026-09-12T22:30:00-02:30",
+    "url":"https://example.test/occ-2026-09-12"}
+    </script></html>
+    """
+
+    class Response:
+        text = html
+
+        def raise_for_status(self):
+            return None
+
+    class Session:
+        headers = {}
+
+        def get(self, *args, **kwargs):
+            return Response()
+
+    summary = SpiritCalendarImporter(session=Session()).import_range(
+        date(2026, 9, 7), date(2026, 10, 3)
+    )
+
+    assert summary.created == 0, "a duplicate row was created for a night already held"
+    assert summary.updated == 1
+    assert Show.objects.filter(date=date(2026, 9, 12)).count() == 1
+
+    existing.refresh_from_db()
+    assert existing.title == "Forever Country... in the Key of Spirit!!"
+    assert existing.end_time == time(22, 30)
+    assert existing.external_id != "spirit-occ-forever-country-old-scheme"
+
+
+@pytest.mark.django_db
+def test_import_still_separates_two_shows_on_the_same_date():
+    """Adoption keys on the start time, so a matinee and an evening show stay distinct."""
+    matinee = Show.objects.create(
+        title="Ugly Stick Workshop",
+        date=date(2026, 9, 12),
+        start_time=time(13, 0),
+        end_time=time(15, 0),
+        external_id="workshop-2026-09-12",
+        source=Show.Source.CALENDAR_IMPORT,
+        active=True,
+    )
+
+    html = """
+    <html><script type="application/ld+json">
+    {"@type":"Event","name":"Forever Country","startDate":"2026-09-12T18:30:00-02:30",
+    "endDate":"2026-09-12T22:30:00-02:30","url":"https://example.test/evening"}
+    </script></html>
+    """
+
+    class Response:
+        text = html
+
+        def raise_for_status(self):
+            return None
+
+    class Session:
+        headers = {}
+
+        def get(self, *args, **kwargs):
+            return Response()
+
+    SpiritCalendarImporter(session=Session()).import_range(
+        date(2026, 9, 7), date(2026, 10, 3)
+    )
+
+    assert Show.objects.filter(date=date(2026, 9, 12)).count() == 2
+    matinee.refresh_from_db()
+    assert matinee.title == "Ugly Stick Workshop"

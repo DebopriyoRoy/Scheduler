@@ -1,26 +1,58 @@
 {% extends "scheduling/base.html" %}
 {% block title %}Shows | Spirit Scheduling Engine{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-4">
-  <div><p class="text-uppercase text-primary fw-semibold small mb-1">Inputs</p><h1 class="h2">Shows</h1><p class="text-secondary">Imported shows are updated in place. Manual shows are never deleted by the importer.</p></div>
-  <a class="btn btn-primary" href="{% url 'show_create' %}">Add Show</a>
+<div class="mb-4">
+  <p class="text-uppercase text-primary fw-semibold small mb-1">Inputs</p>
+  <h1 class="h2">Shows</h1>
+  <p class="text-secondary mb-0">
+    Shows come from the live Spirit calendar. Importing a date range updates the shows
+    already held for those dates rather than adding a second copy.
+  </p>
 </div>
+
 <div class="card border-0 shadow-sm mb-4"><div class="card-body">
-  <h2 class="h5">Import Spirit public calendar</h2>
+  <h2 class="h5">Import from the live show calendar</h2>
   <form class="row g-3 align-items-end" method="post" action="{% url 'show_import' %}">{% csrf_token %}
     <div class="col-md-4"><label class="form-label" for="id_start_date">Start date</label>{{ import_form.start_date }}</div>
     <div class="col-md-4"><label class="form-label" for="id_end_date">End date</label>{{ import_form.end_date }}</div>
-    <div class="col-md-4"><button class="btn btn-outline-primary" type="submit">Import Shows</button></div>
+    <div class="col-md-4"><button class="btn btn-primary" type="submit">Import Shows</button></div>
   </form>
-  <p class="small text-secondary mt-2 mb-0">If the public site is unavailable or JavaScript-only, use Add Show as the supported fallback.</p>
+  <p class="small text-secondary mt-2 mb-0">
+    Reads <span class="font-monospace">spiritofnewfoundland.com/show-calendar</span> and
+    lists the shows found for the dates you choose.
+  </p>
 </div></div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+  <div class="small text-secondary">
+    {% if filter_start and filter_end %}
+      Showing <strong>{{ filter_start|date:"d M Y" }}</strong> to
+      <strong>{{ filter_end|date:"d M Y" }}</strong>
+      &middot; <a href="{% url 'show_list' %}">show all dates</a>
+    {% else %}
+      Showing all dates
+    {% endif %}
+  </div>
+  <div class="small">
+    {% if include_inactive %}
+      <a href="{% url 'show_list' %}{% if filter_start %}?start={{ filter_start|date:'Y-m-d' }}&amp;end={{ filter_end|date:'Y-m-d' }}{% endif %}">Hide deactivated shows</a>
+    {% elif hidden_count %}
+      <a href="{% url 'show_list' %}?inactive=1{% if filter_start %}&amp;start={{ filter_start|date:'Y-m-d' }}&amp;end={{ filter_end|date:'Y-m-d' }}{% endif %}">
+        Show {{ hidden_count }} deactivated show{{ hidden_count|pluralize }}
+      </a>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
   <thead><tr><th>Date</th><th>Show</th><th>Time</th><th>Guests</th><th>50/50</th><th>Source</th><th>Status</th><th></th></tr></thead>
-  <tbody>{% for show in shows %}<tr>
+  <tbody>{% for show in shows %}<tr{% if not show.active %} class="table-light text-secondary"{% endif %}>
     <td>{{ show.date|date:"D, M j, Y" }}</td><td>{{ show.title }}</td><td>{{ show.start_time|time:"H:i" }}–{{ show.end_time|time:"H:i" }}</td>
-    <td>{% if show.expected_guests != None %}{{ show.expected_guests }}{% else %}<span class="badge text-bg-warning">Default 100</span>{% endif %}</td>
+    <td>{% if show.expected_guests != None %}{{ show.expected_guests }}{% else %}<span class="badge text-bg-warning" title="No guest count entered; the {{ default_guests }}-guest planning buffer is used">Default {{ default_guests }}</span>{% endif %}</td>
     <td>{{ show.requires_50_50|yesno:"Required,No" }}</td><td>{{ show.get_source_display }}</td><td>{% if show.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
     <td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'show_edit' show.pk %}">Edit</a>{% if show.active %}<form class="d-inline" method="post" action="{% url 'show_deactivate' show.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Deactivate</button></form>{% endif %}</td>
-  </tr>{% empty %}<tr><td colspan="8" class="text-center py-5 text-secondary">No shows yet. Import the calendar or add one manually.</td></tr>{% endfor %}</tbody>
+  </tr>{% empty %}<tr><td colspan="8" class="text-center py-5 text-secondary">
+    {% if filter_start %}No shows on the live calendar for these dates.{% else %}No shows yet. Choose a date range above and import them.{% endif %}
+  </td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% endblock %}

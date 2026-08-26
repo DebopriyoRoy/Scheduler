@@ -195,19 +195,40 @@ class SpiritCalendarImporter:
             key=lambda item: (item.date, item.start_time, item.title),
         )
         for event in events:
-            _, was_created = Show.objects.update_or_create(
-                external_id=event.external_id,
-                defaults={
-                    "title": event.title,
-                    "date": event.date,
-                    "start_time": event.start_time,
-                    "end_time": event.end_time,
-                    "venue": event.venue,
-                    "source": Show.Source.CALENDAR_IMPORT,
-                    "source_url": event.source_url,
-                    "active": True,
-                },
-            )
-            created += int(was_created)
-            updated += int(not was_created)
+            fields = {
+                "title": event.title,
+                "date": event.date,
+                "start_time": event.start_time,
+                "end_time": event.end_time,
+                "venue": event.venue,
+                "source": Show.Source.CALENDAR_IMPORT,
+                "source_url": event.source_url,
+                "active": True,
+            }
+
+            existing = Show.objects.filter(external_id=event.external_id).first()
+            if existing is None:
+                # The same real show can arrive under a different external_id when the
+                # calendar changes its slugs or the scraper changes how it builds one.
+                # Keying purely on external_id then produces a second row for a night
+                # that already exists, which is how the list came to show each show
+                # three times. A show is identified on the floor by when it starts, so
+                # adopt a live row already holding this date and start time and update
+                # it in place, taking on the new id for next time.
+                existing = Show.objects.filter(
+                    active=True,
+                    date=event.date,
+                    start_time=event.start_time,
+                    source=Show.Source.CALENDAR_IMPORT,
+                ).first()
+
+            if existing is None:
+                Show.objects.create(external_id=event.external_id, **fields)
+                created += 1
+            else:
+                existing.external_id = event.external_id
+                for name, value in fields.items():
+                    setattr(existing, name, value)
+                existing.save()
+                updated += 1
         return ImportSummary(created, updated, tuple(parsed.values()), tuple(urls))
