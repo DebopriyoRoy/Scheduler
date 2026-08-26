@@ -136,6 +136,9 @@ def configure_django(port: int) -> None:
     os.environ["DJANGO_ALLOWED_HOSTS"] = "127.0.0.1,localhost"
     os.environ["DATABASE_URL"] = f"sqlite:///{DB_PATH}"  # four slashes total: absolute
     os.environ.setdefault("SPIRIT_APP_PORT", str(port))
+    # Diagnostic output (calendar screenshots) belongs beside the data, not inside the
+    # read-only .app bundle that the working directory points into once installed.
+    os.environ.setdefault("SPIRIT_ARTIFACTS_DIR", str(DATA_DIR / "artifacts"))
 
     # User-editable settings file wins for anything it defines.
     if ENV_PATH.exists():

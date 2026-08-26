@@ -115,3 +115,41 @@ def test_completeness_mismatch_flags_partial_status():
     )
     assert run.status == CalendarSyncRun.SyncStatus.PARTIAL
     assert run.difference == 5
+
+
+def test_provider_construction_survives_a_read_only_working_directory(tmp_path, monkeypatch):
+    """Building the provider must not require a writable working directory.
+
+    The screenshot directory was the relative path "artifacts/calendar_screenshots",
+    created in __init__. Once installed, a Mac app's working directory is inside its
+    own read-only bundle, so merely constructing the provider raised
+    "Read-only file system: 'artifacts'" and every calendar import failed before it
+    began. Screenshots are diagnostic; losing them must never stop an import.
+    """
+    from scheduling.integrations.spirit_calendar.browser_provider import (
+        PlaywrightCalendarProvider,
+    )
+
+    read_only = tmp_path / "bundle"
+    read_only.mkdir()
+    read_only.chmod(0o500)
+    monkeypatch.chdir(read_only)
+    monkeypatch.delenv("SPIRIT_ARTIFACTS_DIR", raising=False)
+
+    provider = PlaywrightCalendarProvider()
+    assert provider.screenshot_dir is None  # skipped, not fatal
+
+    read_only.chmod(0o700)  # let pytest clean up
+
+
+def test_provider_uses_the_configured_artifacts_directory(tmp_path, monkeypatch):
+    """A writable location supplied by the packaged app is used for screenshots."""
+    from scheduling.integrations.spirit_calendar.browser_provider import (
+        PlaywrightCalendarProvider,
+    )
+
+    monkeypatch.setenv("SPIRIT_ARTIFACTS_DIR", str(tmp_path / "data"))
+    provider = PlaywrightCalendarProvider()
+
+    assert provider.screenshot_dir is not None
+    assert (tmp_path / "data" / "calendar_screenshots").is_dir()

@@ -6,6 +6,7 @@ import os
 import re
 from collections.abc import Sequence
 from datetime import date, time
+from pathlib import Path
 
 from playwright.async_api import async_playwright
 
@@ -23,8 +24,33 @@ class PlaywrightCalendarProvider(BaseCalendarProvider):
     def __init__(self, headless: bool = True, timeout_ms: int = 30000):
         self.headless = headless
         self.timeout_ms = timeout_ms
-        self.screenshot_dir = "artifacts/calendar_screenshots"
-        os.makedirs(self.screenshot_dir, exist_ok=True)
+        self.screenshot_dir = self._resolve_screenshot_dir()
+
+    @staticmethod
+    def _resolve_screenshot_dir() -> str | None:
+        """A writable place for the per-month screenshots, or None to skip them.
+
+        These are diagnostic only. The path used to be the relative string
+        "artifacts/calendar_screenshots", created eagerly in __init__, so whenever the
+        working directory was not writable - which is always true for an installed Mac
+        app, whose bundle is read-only - constructing the provider raised
+        "Read-only file system: 'artifacts'" and no import could run at all. A missing
+        screenshot directory must never be able to stop a calendar import.
+        """
+        target = os.getenv("SPIRIT_ARTIFACTS_DIR")
+        candidate = (
+            Path(target) / "calendar_screenshots"
+            if target
+            else Path("artifacts") / "calendar_screenshots"
+        )
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".writable"
+            probe.touch()
+            probe.unlink()
+        except OSError:
+            return None
+        return str(candidate)
 
     @property
     def provider_name(self) -> str:
@@ -70,12 +96,19 @@ class PlaywrightCalendarProvider(BaseCalendarProvider):
                     )
                     header_text = await header_el.inner_text() if header_el else ""
 
-                    # Save debug screenshot for current month
-                    clean_header = re.sub(r"[^a-zA-Z0-9]+", "_", header_text.lower()).strip("_")
-                    screenshot_path = os.path.join(
-                        self.screenshot_dir, f"{clean_header or f'month_{click_idx}'}.png"
-                    )
-                    await page.screenshot(path=screenshot_path, full_page=True)
+                    # Save a debug screenshot of the month, if there is anywhere to put
+                    # one. Purely diagnostic, so a failure here is never fatal.
+                    if self.screenshot_dir:
+                        clean_header = re.sub(
+                            r"[^a-zA-Z0-9]+", "_", header_text.lower()
+                        ).strip("_")
+                        screenshot_path = os.path.join(
+                            self.screenshot_dir, f"{clean_header or f'month_{click_idx}'}.png"
+                        )
+                        try:
+                            await page.screenshot(path=screenshot_path, full_page=True)
+                        except OSError:
+                            self.screenshot_dir = None
 
                     # Extract all event elements in current view
                     event_elements = await page.query_selector_all(
