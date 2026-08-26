@@ -1,0 +1,99 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Sync with Square | Spirit Scheduling Engine{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <p class="text-uppercase text-primary fw-semibold small mb-1">Square</p>
+  <h1 class="h2 mb-1">Sync with Square</h1>
+  <p class="text-secondary mb-0">
+    Brings in the show calendar and everyone's availability in one go. Reads only &mdash;
+    nothing here changes anything in Square.
+  </p>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start gap-2 mb-3">
+      <span class="status-dot {% if session_connected %}status-connected{% endif %} mt-2"></span>
+      <div>
+        <div class="fw-semibold">Square dashboard {% if session_connected %}connected{% else %}not connected{% endif %}</div>
+        <div class="small text-secondary">{{ session_detail }}</div>
+      </div>
+    </div>
+    {% if not session_connected %}
+      <div class="alert alert-warning mb-0">
+        <strong>Availability cannot be read yet.</strong>
+        Square publishes no interface for staff availability, so it has to be read from
+        the dashboard, which needs a sign-in. Until then the engine falls back to
+        built-in hours that are almost certainly out of date.
+        <div class="mt-2 small">
+          In Terminal, run once:
+          <code>manage.py square_connect</code> &mdash; a browser opens and you sign in
+          to Square directly. Your password is never seen by this application.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4"><div class="card-body">
+  <h2 class="h5">Pull from Square</h2>
+  <form class="row g-3 align-items-end" method="post">{% csrf_token %}
+    <div class="col-md-4">
+      <label class="form-label" for="start">From</label>
+      <input class="form-control" type="date" id="start" name="start" value="{{ start }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="end">To</label>
+      <input class="form-control" type="date" id="end" name="end" value="{{ end }}">
+    </div>
+    <div class="col-md-4">
+      <button class="btn btn-primary w-100" type="submit">Sync from Square</button>
+    </div>
+  </form>
+  <p class="small text-secondary mt-3 mb-0">
+    Takes up to a minute: it opens a browser in the background to read the calendar and
+    the availability grid. {{ show_count }} show{{ show_count|pluralize }} currently held
+    for these dates.
+  </p>
+</div></div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <h2 class="h6">What comes in</h2>
+      <ul class="small text-secondary mb-0 ps-3">
+        <li><strong>Show calendar</strong> &mdash; every show for the dates you choose, with
+          its own doors and wrap times.</li>
+        <li><strong>Staff availability</strong> &mdash; the weekly grid each person keeps in
+          Square, which decides who the engine may consider at all.</li>
+      </ul>
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <h2 class="h6">Rosters already in Square</h2>
+      {% if comparable_runs %}
+        <p class="small text-secondary">
+          Compare a schedule against what Square holds now, and take on any changes made
+          there.
+        </p>
+        <ul class="list-unstyled mb-0 small">
+          {% for run in comparable_runs %}
+            <li class="mb-1">
+              <a href="{% url 'schedule_square_compare' run.pk %}">
+                #{{ run.pk }} &middot; {{ run.start_date|date:"d M" }}&ndash;{{ run.end_date|date:"d M Y" }}
+              </a>
+              <span class="text-secondary">{{ run.get_status_display }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="small text-secondary mb-0">
+          No schedule has been sent to Square yet. Once one has, it can be compared
+          against whatever management change there.
+        </p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

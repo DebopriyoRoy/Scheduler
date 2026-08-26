@@ -282,10 +282,41 @@ def run_calendar_sync(start: str, end: str) -> int:
     return 0
 
 
+def run_availability_sync_mode(start: str, end: str) -> int:
+    """Availability-sync mode: read Square's availability grid once and exit.
+
+    Same reasoning as the calendar: Playwright needs asyncio subprocesses, which on
+    Unix only work on a process's main thread, so this cannot run inside a request.
+    """
+    import datetime as _dt
+
+    prepare_data_dir()
+    ensure_browser_engine()
+    configure_django(0)
+
+    import django
+
+    django.setup()
+
+    from django.core.management import call_command
+
+    call_command(
+        "sync_square_availability",
+        start=_dt.date.fromisoformat(start).isoformat(),
+        end=_dt.date.fromisoformat(end).isoformat(),
+        live=True,
+        all_dates=True,
+        json=True,
+    )
+    return 0
+
+
 def main() -> int:
     start_logging()
     if len(sys.argv) >= 4 and sys.argv[1] == "--sync-calendar":
         return run_calendar_sync(sys.argv[2], sys.argv[3])
+    if len(sys.argv) >= 4 and sys.argv[1] == "--sync-availability":
+        return run_availability_sync_mode(sys.argv[2], sys.argv[3])
 
     prepare_data_dir()
 

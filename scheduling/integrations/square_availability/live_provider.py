@@ -138,6 +138,10 @@ def fetch_weekly_grid(headless: bool = True) -> WeeklyGrid:
         name = cells[0].strip()
         if not name or name.lower() in WEEKDAY_HEADERS:
             continue
+        # A wrapped row can leave a cell of availability text where the name belongs.
+        # Treating that as a person produces a phantom nobody can match.
+        if WINDOW.search(name) or name.lower().startswith(("available", "unavailable")):
+            continue
         rows[name] = {
             weekday: (cells[position] if position < len(cells) else "")
             for position, weekday in header_index.items()

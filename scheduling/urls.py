@@ -13,6 +13,7 @@ urlpatterns = [
     path("shows/<int:show_id>/deactivate/", views.show_deactivate, name="show_deactivate"),
     path("shows/import/", views.show_import, name="show_import"),
     path("shows/calendar-sync/", views.calendar_sync, name="calendar_sync"),
+    path("square/pull/", views.square_pull, name="square_pull"),
     path("availability/", views.availability, name="availability"),
     path(
         "availability/square-sync/",

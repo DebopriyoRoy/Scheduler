@@ -1,7 +1,7 @@
 import csv
 import logging
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -1394,5 +1394,66 @@ def schedule_square_compare(request, run_id):
             "removed": report.of_kind("REMOVED_FROM_SQUARE") if report else [],
             "edited": report.of_kind("EDITED_IN_SQUARE") if report else [],
             "unmapped": report.of_kind("UNMAPPED") if report else [],
+        },
+    )
+
+
+@login_required
+def square_pull(request):
+    """One action that refreshes everything Square knows.
+
+    The show calendar, staff availability and the rosters Square holds were three
+    separate chores in three separate places. Each still runs as its own process -
+    browser automation cannot run in a web request thread without taking the
+    application down with it - but they are triggered together from here.
+    """
+    from scheduling.integrations.square_session import session_status
+    from scheduling.services.square_pull import pull_everything
+
+    default_start = date.today()
+    default_end = default_start + timedelta(days=60)
+
+    if request.method == "POST":
+        start = _parse_optional_date(request.POST.get("start")) or default_start
+        end = _parse_optional_date(request.POST.get("end")) or default_end
+        if end < start:
+            start, end = end, start
+
+        report = pull_everything(start, end)
+        for step in report.steps:
+            if not step.ok:
+                messages.error(request, f"{step.name}: {step.detail}")
+            elif step.extra.get("partial") or step.extra.get("live") is False:
+                messages.warning(request, f"{step.name}: {step.detail}")
+            else:
+                messages.success(request, f"{step.name}: {step.detail}")
+            unmatched = step.extra.get("unmatched") or []
+            if unmatched:
+                messages.warning(
+                    request,
+                    f"{len(unmatched)} Square team member(s) are not on the roster, so "
+                    f"their availability was ignored: {', '.join(unmatched[:8])}"
+                    + ("…" if len(unmatched) > 8 else ""),
+                )
+        return redirect(f"{reverse('square_pull')}?start={start:%Y-%m-%d}&end={end:%Y-%m-%d}")
+
+    start = _parse_optional_date(request.GET.get("start")) or default_start
+    end = _parse_optional_date(request.GET.get("end")) or default_end
+    session = session_status()
+
+    runs = ScheduleRun.objects.filter(
+        status__in=[ScheduleRunStatus.SYNCED_TO_SQUARE, ScheduleRunStatus.APPROVED]
+    ).order_by("-start_date")[:5]
+
+    return render(
+        request,
+        "scheduling/square_pull.html",
+        {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "session_connected": session.connected,
+            "session_detail": session.detail,
+            "show_count": Show.objects.filter(active=True, date__range=(start, end)).count(),
+            "comparable_runs": runs,
         },
     )
