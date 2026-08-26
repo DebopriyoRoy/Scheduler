@@ -136,7 +136,7 @@ def test_provider_construction_survives_a_read_only_working_directory(tmp_path, 
     monkeypatch.chdir(read_only)
     monkeypatch.delenv("SPIRIT_ARTIFACTS_DIR", raising=False)
 
-    provider = PlaywrightCalendarProvider()
+    provider = PlaywrightCalendarProvider(capture_screenshots=True)
     assert provider.screenshot_dir is None  # skipped, not fatal
 
     read_only.chmod(0o700)  # let pytest clean up
@@ -149,7 +149,50 @@ def test_provider_uses_the_configured_artifacts_directory(tmp_path, monkeypatch)
     )
 
     monkeypatch.setenv("SPIRIT_ARTIFACTS_DIR", str(tmp_path / "data"))
-    provider = PlaywrightCalendarProvider()
+    provider = PlaywrightCalendarProvider(capture_screenshots=True)
 
     assert provider.screenshot_dir is not None
     assert (tmp_path / "data" / "calendar_screenshots").is_dir()
+
+
+def test_screenshots_are_off_unless_asked_for():
+    """A full-page PNG per month cost more than reading every event on the page."""
+    from scheduling.integrations.spirit_calendar.browser_provider import (
+        PlaywrightCalendarProvider,
+    )
+
+    assert PlaywrightCalendarProvider().screenshot_dir is None
+
+
+@pytest.mark.parametrize(
+    "heading,expected",
+    [
+        ("October 2026", 2026 * 12 + 10),
+        ("  December 2026 ", 2026 * 12 + 12),
+        ("January 2027", 2027 * 12 + 1),
+        ("not a month", None),
+        ("", None),
+    ],
+)
+def test_calendar_heading_is_read_as_a_month(heading, expected):
+    """Navigation stops at the requested range by comparing the heading month.
+
+    Reading this wrong is what made every import walk a fixed twelve months: the
+    early-exit check was described in a comment but never written.
+    """
+    from scheduling.integrations.spirit_calendar.browser_provider import (
+        PlaywrightCalendarProvider,
+    )
+
+    assert PlaywrightCalendarProvider._parse_header_month(heading) == expected
+
+
+def test_month_ordinals_order_across_a_year_boundary():
+    """December 2026 must sort before January 2027, not after."""
+    from scheduling.integrations.spirit_calendar.browser_provider import (
+        PlaywrightCalendarProvider,
+    )
+
+    dec = PlaywrightCalendarProvider._month_ordinal(2026, 12)
+    jan = PlaywrightCalendarProvider._month_ordinal(2027, 1)
+    assert jan == dec + 1

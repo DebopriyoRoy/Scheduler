@@ -17,14 +17,37 @@ from scheduling.integrations.spirit_calendar.base import (
 from scheduling.integrations.spirit_calendar.exceptions import SpiritCalendarBrowserError
 from scheduling.integrations.spirit_calendar.normalizer import build_normalized_occurrence
 
+CALENDAR_URL = "https://spiritofnewfoundland.com/show-calendar/"
+EVENT_SELECTOR = ".fc-event, .fc-daygrid-event, .etn-event-item, a.fc-event"
+HEADER_SELECTOR = ".fc-toolbar-title, .fc-header-title, .calendar-title"
+NEXT_SELECTOR = ".fc-next-button, button.fc-next-button"
+PREV_SELECTOR = ".fc-prev-button, button.fc-prev-button"
+
+# A backstop, not a plan: navigation stops as soon as the requested months have been
+# read. This only bounds the damage if the header ever becomes unreadable, so no date
+# range can spin forever.
+MAX_MONTH_STEPS = 24
+
+# The calendar re-renders locally on a month click - no network round trip - so it
+# settles in about a tenth of a second. This is the ceiling before giving up, not a
+# wait: the code waits for the heading to actually change.
+MONTH_RENDER_TIMEOUT_MS = 15000
+
 
 class PlaywrightCalendarProvider(BaseCalendarProvider):
     """Navigates live rendered calendar with Playwright Chromium to extract occurrences."""
 
-    def __init__(self, headless: bool = True, timeout_ms: int = 30000):
+    def __init__(
+        self,
+        headless: bool = True,
+        timeout_ms: int = 30000,
+        capture_screenshots: bool = False,
+    ):
         self.headless = headless
         self.timeout_ms = timeout_ms
-        self.screenshot_dir = self._resolve_screenshot_dir()
+        # Off by default. A full-page PNG per month cost more than reading every event
+        # on the page, for output nobody looks at unless something has gone wrong.
+        self.screenshot_dir = self._resolve_screenshot_dir() if capture_screenshots else None
 
     @staticmethod
     def _resolve_screenshot_dir() -> str | None:
@@ -56,6 +79,55 @@ class PlaywrightCalendarProvider(BaseCalendarProvider):
     def provider_name(self) -> str:
         return "PLAYWRIGHT"
 
+    @staticmethod
+    def _month_ordinal(year: int, month: int) -> int:
+        """Months as a single comparable number, so ranges span year boundaries."""
+        return year * 12 + month
+
+    @classmethod
+    def _parse_header_month(cls, text: str) -> int | None:
+        """Read "October 2026" from the calendar heading as a month ordinal."""
+        match = re.search(r"([A-Za-z]{3,9})\s+(20\d{2})", text or "")
+        if not match:
+            return None
+        try:
+            month = datetime.datetime.strptime(match.group(1)[:3], "%b").month
+        except ValueError:
+            return None
+        return cls._month_ordinal(int(match.group(2)), month)
+
+    async def _current_month(self, page) -> int | None:
+        element = await page.query_selector(HEADER_SELECTOR)
+        if element is None:
+            return None
+        return self._parse_header_month(await element.inner_text())
+
+    async def _step_month(self, page, selector: str) -> bool:
+        """Move one month and wait for the heading to actually change.
+
+        This replaced a flat two-second sleep after every click. The wait is both far
+        quicker - the calendar re-renders in about 0.1s - and more dependable, because
+        a fixed sleep is simultaneously too long on a fast connection and too short on
+        a slow one.
+        """
+        header = await page.query_selector(HEADER_SELECTOR)
+        before = (await header.inner_text()).strip() if header else ""
+        button = await page.query_selector(selector)
+        if button is None:
+            return False
+        await button.click()
+        try:
+            await page.wait_for_function(
+                "prev => { const e = document.querySelector("
+                f"'{HEADER_SELECTOR}'"
+                "); return e && e.innerText.trim() !== prev; }",
+                arg=before,
+                timeout=MONTH_RENDER_TIMEOUT_MS,
+            )
+        except Exception:
+            return False
+        return True
+
     def fetch_occurrences(
         self, start_date: date, end_date: date
     ) -> Sequence[NormalizedEventOccurrence]:
@@ -68,7 +140,7 @@ class PlaywrightCalendarProvider(BaseCalendarProvider):
         if end_date < start_date:
             raise ValueError("End date must not precede start date.")
 
-        calendar_url = "https://spiritofnewfoundland.com/show-calendar/"
+        calendar_url = CALENDAR_URL
         occurrences_map: dict[str, NormalizedEventOccurrence] = {}
 
         try:
@@ -83,27 +155,42 @@ class PlaywrightCalendarProvider(BaseCalendarProvider):
                 )
                 page = await context.new_page()
 
-                # Navigate to live show calendar page
-                await page.goto(calendar_url, wait_until="networkidle", timeout=self.timeout_ms)
-                await page.wait_for_timeout(3000)
+                # Wait for the calendar itself rather than for the network to fall
+                # quiet. "networkidle" waits out analytics, fonts and trackers that
+                # have nothing to do with the events, and cost several seconds.
+                await page.goto(
+                    calendar_url, wait_until="domcontentloaded", timeout=self.timeout_ms
+                )
+                await page.wait_for_selector(EVENT_SELECTOR, timeout=self.timeout_ms)
 
-                # Loop navigating months until target end_date is reached
-                max_month_clicks = 12
-                for click_idx in range(max_month_clicks):
-                    # Check current calendar header month
-                    header_el = await page.query_selector(
-                        ".fc-toolbar-title, .fc-header-title, .calendar-title"
-                    )
+                first_month = self._month_ordinal(start_date.year, start_date.month)
+                last_month = self._month_ordinal(end_date.year, end_date.month)
+                steps = 0
+
+                # The calendar always opens on the current month, and no URL parameter
+                # moves it, so walk to the range. Previously this clicked forward a
+                # fixed twelve times whatever was asked for - importing one month read
+                # eleven irrelevant ones.
+                while steps < MAX_MONTH_STEPS:
+                    current = await self._current_month(page)
+                    if current is None or current == first_month:
+                        break
+                    direction = NEXT_SELECTOR if current < first_month else PREV_SELECTOR
+                    if not await self._step_month(page, direction):
+                        break
+                    steps += 1
+
+                while steps < MAX_MONTH_STEPS:
+                    header_el = await page.query_selector(HEADER_SELECTOR)
                     header_text = await header_el.inner_text() if header_el else ""
 
-                    # Save a debug screenshot of the month, if there is anywhere to put
-                    # one. Purely diagnostic, so a failure here is never fatal.
+                    # Diagnostic only, and off unless explicitly requested.
                     if self.screenshot_dir:
                         clean_header = re.sub(
                             r"[^a-zA-Z0-9]+", "_", header_text.lower()
                         ).strip("_")
                         screenshot_path = os.path.join(
-                            self.screenshot_dir, f"{clean_header or f'month_{click_idx}'}.png"
+                            self.screenshot_dir, f"{clean_header or f'month_{steps}'}.png"
                         )
                         try:
                             await page.screenshot(path=screenshot_path, full_page=True)
@@ -111,9 +198,7 @@ class PlaywrightCalendarProvider(BaseCalendarProvider):
                             self.screenshot_dir = None
 
                     # Extract all event elements in current view
-                    event_elements = await page.query_selector_all(
-                        ".fc-event, .fc-daygrid-event, .etn-event-item, a.fc-event"
-                    )
+                    event_elements = await page.query_selector_all(EVENT_SELECTOR)
 
                     for el in event_elements:
                         raw_text = await el.inner_text()
@@ -174,14 +259,15 @@ class PlaywrightCalendarProvider(BaseCalendarProvider):
                         
                         occurrences_map[occurrence.external_occurrence_id] = occurrence
 
-                    # Check if we should click next month button
-                    next_btn = await page.query_selector(".fc-next-button, button.fc-next-button")
-                    if not next_btn:
+                    # Stop as soon as the requested months have been read. This check
+                    # was described in a comment here but never actually written, so
+                    # every import walked the full twelve months regardless.
+                    current = await self._current_month(page)
+                    if current is None or current >= last_month:
                         break
-                    
-                    # If we've reached past end_date month, break early
-                    await next_btn.click()
-                    await page.wait_for_timeout(2000)
+                    if not await self._step_month(page, NEXT_SELECTOR):
+                        break
+                    steps += 1
 
                 await browser.close()
         except Exception as exc:
