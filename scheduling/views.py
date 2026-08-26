@@ -67,6 +67,11 @@ from scheduling.services.square_production_sync import (
     sync_production_jobs,
     sync_production_team_members,
 )
+from scheduling.services.square_reconcile import (
+    SquareReadError,
+    adopt_square_version,
+    compare_run_with_square,
+)
 from scheduling.services.square_sync import (
     SquareSyncError,
     sync_schedule_to_sandbox,
@@ -1334,5 +1339,60 @@ def availability_comparison(request):
             ],
             "blocked": blocked,
             "total_cells": len(employees) * len(show_dates),
+        },
+    )
+
+
+@login_required
+def schedule_square_compare(request, run_id):
+    """Read Square's version of this roster and show where it has diverged.
+
+    Management edit rosters directly in Square - swapping a bartender, shifting a
+    start, adding someone the engine never considered. Those decisions were previously
+    invisible here, so the local run stopped describing reality and the next generated
+    schedule would quietly undo them.
+    """
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+
+    if request.method == "POST" and request.POST.get("action") == "adopt":
+        try:
+            report = compare_run_with_square(schedule_run)
+            applied = adopt_square_version(schedule_run, report, request.user)
+        except SquareReadError as exc:
+            messages.error(request, f"Square could not be read: {exc}")
+            return redirect("schedule_square_compare", run_id=run_id)
+        except ValidationError as exc:
+            messages.error(request, f"Square's version could not be applied: {exc}")
+            return redirect("schedule_square_compare", run_id=run_id)
+
+        parts = [
+            f"{applied['updated']} updated" if applied["updated"] else "",
+            f"{applied['added']} added" if applied["added"] else "",
+            f"{applied['removed']} removed" if applied["removed"] else "",
+        ]
+        summary = ", ".join(p for p in parts if p) or "nothing to change"
+        messages.success(request, f"This schedule now matches Square: {summary}.")
+        for note in applied["skipped"]:
+            messages.warning(request, f"Not applied - {note}")
+        return redirect("schedule_square_compare", run_id=run_id)
+
+    report = None
+    error = ""
+    try:
+        report = compare_run_with_square(schedule_run)
+    except SquareReadError as exc:
+        error = str(exc)
+
+    return render(
+        request,
+        "scheduling/schedule_square_compare.html",
+        {
+            "schedule_run": schedule_run,
+            "report": report,
+            "error": error,
+            "added": report.of_kind("ADDED_IN_SQUARE") if report else [],
+            "removed": report.of_kind("REMOVED_FROM_SQUARE") if report else [],
+            "edited": report.of_kind("EDITED_IN_SQUARE") if report else [],
+            "unmapped": report.of_kind("UNMAPPED") if report else [],
         },
     )

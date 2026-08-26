@@ -1,0 +1,119 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Square comparison | Spirit Scheduling Engine{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Schedule #{{ schedule_run.pk }}</p>
+    <h1 class="h2 mb-1">Compare with Square</h1>
+    <p class="text-secondary mb-0">
+      {{ schedule_run.start_date|date:"d M Y" }} &ndash; {{ schedule_run.end_date|date:"d M Y" }}.
+      Reads what Square holds right now. Nothing here writes to Square.
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'schedule_detail' schedule_run.pk %}">Back to schedule</a>
+</div>
+
+{% if error %}
+  <div class="alert alert-danger">Square could not be read: {{ error }}</div>
+{% elif report %}
+
+  <div class="row g-2 mb-4">
+    <div class="col-6 col-md-3"><div class="card border-success h-100"><div class="card-body py-2 px-3">
+      <div class="fs-4 fw-semibold lh-1">{{ report.matched }}</div>
+      <div class="small text-muted">identical</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-warning h-100"><div class="card-body py-2 px-3">
+      <div class="fs-4 fw-semibold lh-1">{{ edited|length }}</div>
+      <div class="small text-muted">changed in Square</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-primary h-100"><div class="card-body py-2 px-3">
+      <div class="fs-4 fw-semibold lh-1">{{ added|length }}</div>
+      <div class="small text-muted">added in Square</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-danger h-100"><div class="card-body py-2 px-3">
+      <div class="fs-4 fw-semibold lh-1">{{ removed|length }}</div>
+      <div class="small text-muted">removed in Square</div></div></div></div>
+  </div>
+
+  {% if report.published_count %}
+    <div class="alert alert-info">
+      <strong>{{ report.published_count }} of these shifts are published</strong> &mdash; staff can
+      see them. The rest are still drafts.
+    </div>
+  {% endif %}
+
+  {% if not report.has_differences %}
+    <div class="alert alert-success mb-0">
+      <strong>They match.</strong> All {{ report.matched }} shifts agree with Square on
+      person, date, job and times.
+    </div>
+  {% else %}
+
+    <div class="card border-0 shadow-sm mb-4"><div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light"><tr>
+          <th>Date</th><th>Who</th><th>Change</th><th>This schedule</th><th>Square</th><th>Note</th>
+        </tr></thead>
+        <tbody>
+          {% for d in edited %}
+            <tr class="table-warning-subtle">
+              <td class="text-nowrap">{{ d.date|date:"D d M" }}</td>
+              <td>{{ d.employee_name }}</td>
+              <td><span class="badge text-bg-warning">Changed</span></td>
+              <td class="small">{{ d.local.job }} {{ d.local.start }}&ndash;{{ d.local.end }}<br><span class="text-secondary">{{ d.local.position }}</span></td>
+              <td class="small fw-medium">{{ d.square.job }} {{ d.square.start }}&ndash;{{ d.square.end }}</td>
+              <td class="small text-danger">{{ d.availability_note }}</td>
+            </tr>
+          {% endfor %}
+          {% for d in added %}
+            <tr>
+              <td class="text-nowrap">{{ d.date|date:"D d M" }}</td>
+              <td>{{ d.employee_name }}</td>
+              <td><span class="badge text-bg-primary">Added</span></td>
+              <td class="small text-secondary">&mdash;</td>
+              <td class="small fw-medium">{{ d.square.job }} {{ d.square.start }}&ndash;{{ d.square.end }}</td>
+              <td class="small text-danger">{{ d.availability_note }}</td>
+            </tr>
+          {% endfor %}
+          {% for d in removed %}
+            <tr>
+              <td class="text-nowrap">{{ d.date|date:"D d M" }}</td>
+              <td>{{ d.employee_name }}</td>
+              <td><span class="badge text-bg-danger">Removed</span></td>
+              <td class="small">{{ d.local.job }} {{ d.local.start }}&ndash;{{ d.local.end }}<br><span class="text-secondary">{{ d.local.position }}</span></td>
+              <td class="small text-secondary">not in Square</td>
+              <td></td>
+            </tr>
+          {% endfor %}
+          {% for d in unmapped %}
+            <tr class="table-light">
+              <td class="text-nowrap">{{ d.date|date:"D d M" }}</td>
+              <td>{{ d.employee_name }}</td>
+              <td><span class="badge text-bg-secondary">Unknown staff</span></td>
+              <td class="small text-secondary">&mdash;</td>
+              <td class="small">{{ d.square.job }} {{ d.square.start }}&ndash;{{ d.square.end }}</td>
+              <td class="small text-secondary">Not mapped to anyone on the roster</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h2 class="h5">Bring this schedule into line with Square</h2>
+      <p class="text-secondary mb-3">
+        Square is the operational record: these are decisions someone made there. Applying
+        them updates this schedule to match, and marks each one as a management override so
+        a later regeneration will not quietly undo it.
+        <strong>Nothing is written to Square.</strong>
+      </p>
+      {% if report.published_count %}
+        <p class="small text-secondary">Published shifts are read the same way as drafts.</p>
+      {% endif %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="action" value="adopt">
+        <button class="btn btn-primary" type="submit">
+          Apply Square's version ({{ report.differences|length }} change{{ report.differences|length|pluralize }})
+        </button>
+      </form>
+    </div></div>
+  {% endif %}
+{% endif %}
+{% endblock %}

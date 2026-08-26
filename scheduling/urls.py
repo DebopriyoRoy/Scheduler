@@ -30,6 +30,11 @@ urlpatterns = [
     path("schedules/generate/", views.schedule_generate, name="schedule_generate"),
     path("schedules/<int:run_id>/", views.schedule_detail, name="schedule_detail"),
     path("schedules/<int:run_id>/approve/", views.schedule_approve, name="schedule_approve"),
+    path(
+        "schedules/<int:run_id>/square/",
+        views.schedule_square_compare,
+        name="schedule_square_compare",
+    ),
     path("schedules/<int:run_id>/new-draft/", views.schedule_new_draft, name="schedule_new_draft"),
     path(
         "schedules/<int:run_id>/export.xlsx",
