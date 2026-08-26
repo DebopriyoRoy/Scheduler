@@ -22,3 +22,7 @@ staticfiles/
 
 # Generated reports, not source
 Spirit_Schedule_Comparison_Report.pdf
+
+# Build output for the packaged Mac app
+dist/
+build/

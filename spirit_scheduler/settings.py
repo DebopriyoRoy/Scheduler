@@ -33,8 +33,14 @@ def database_config() -> dict[str, object]:
         }
     if parsed.scheme != "sqlite":
         raise ValueError("DATABASE_URL must use sqlite, postgres, or postgresql")
-    database_path = unquote(parsed.path.lstrip("/")) or "db.sqlite3"
-    return {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / database_path}
+    # sqlite:///name.db  -> relative to the project directory (the usual case)
+    # sqlite:////abs/path -> an absolute location. The packaged Mac app needs this:
+    # its code lives inside a read-only .app bundle, so the database has to sit in
+    # Application Support instead.
+    raw = unquote(parsed.path) or "/db.sqlite3"
+    if raw.startswith("//"):
+        return {"ENGINE": "django.db.backends.sqlite3", "NAME": Path(raw[1:])}
+    return {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / raw.lstrip("/")}
 
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-development-only-secret-key")
@@ -110,7 +116,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+# The packaged Mac app collects static files at build time and ships them inside the
+# read-only .app bundle, so it points STATIC_ROOT at that location instead.
+STATIC_ROOT = Path(os.getenv("SPIRIT_STATIC_ROOT") or (BASE_DIR / "staticfiles"))
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     # Compressed but deliberately not the *Manifest* variant: manifest storage refuses
