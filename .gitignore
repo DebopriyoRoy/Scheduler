@@ -19,3 +19,6 @@ staticfiles/
 
 # macOS AppleDouble resource-fork metadata
 ._*
+
+# Generated reports, not source
+Spirit_Schedule_Comparison_Report.pdf

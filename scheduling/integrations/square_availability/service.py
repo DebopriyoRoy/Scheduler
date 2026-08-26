@@ -86,6 +86,12 @@ class AvailabilityAnalysisSummary:
     kate_records: tuple[NormalizedAvailabilityRecord, ...]
 
 
+# Provenance marker on EmployeeAvailability rows written by a Square sync.
+# Rows carrying any other source (management UI entry, CSV import) are owned by
+# management and must survive a resync.
+SQUARE_AVAILABILITY_SOURCE = "LIVE_SQUARE_PRODUCTION"
+
+
 class SquareAvailabilitySyncService:
     """Manages reading and completeness validation of Square Production availability."""
 
@@ -170,7 +176,16 @@ class SquareAvailabilitySyncService:
 
         for emp in active_employees:
             for ed in event_dates:
-                EmployeeAvailability.objects.filter(employee=emp, date=ed).delete()
+                # Clear only what a previous Square sync wrote. This used to delete every
+                # row for the employee/date, which silently destroyed availability that
+                # management had typed in by hand - the only way to record availability
+                # for staff who have nothing entered in Square. Manually-entered rows now
+                # survive a refresh, and LocalAvailabilityProvider reads the union of all
+                # rows for a date, so a hand-entered window still counts even when Square
+                # reports UNKNOWN for the same day.
+                EmployeeAvailability.objects.filter(
+                    employee=emp, date=ed, source=SQUARE_AVAILABILITY_SOURCE
+                ).delete()
                 recs = record_map.get((emp.display_name.lower(), ed), [])
 
                 if not recs:
@@ -179,7 +194,7 @@ class SquareAvailabilitySyncService:
                         employee=emp,
                         date=ed,
                         availability_type=AvailabilityType.UNKNOWN,
-                        source="LIVE_SQUARE_PRODUCTION",
+                        source=SQUARE_AVAILABILITY_SOURCE,
                     )
                     matrix_cells.append(
                         AvailabilityMatrixCell(
@@ -233,7 +248,7 @@ class SquareAvailabilitySyncService:
                             availability_type=av_type,
                             start_time=st,
                             end_time=et,
-                            source="LIVE_SQUARE_PRODUCTION",
+                            source=SQUARE_AVAILABILITY_SOURCE,
                         )
 
                         matrix_cells.append(

@@ -364,3 +364,46 @@ def test_completeness_sanity_check_13_dates():
     assert run.available_window_records == 138
     assert run.all_day_combinations == 7
     assert float(run.completeness_percentage) == 57.0
+
+
+@pytest.mark.django_db
+def test_manual_availability_survives_a_square_resync():
+    """Hand-entered availability must not be destroyed by refreshing Square.
+
+    Six staff have nothing entered in Square at all, so typing their availability into
+    the management UI is the only way to make them schedulable. The sync used to delete
+    every row for an employee/date before writing its own, which silently wiped that
+    work on the next refresh.
+    """
+    from scheduling.models import AvailabilityType, EmployeeAvailability
+
+    service = SquareAvailabilitySyncService()
+    service.execute_sync(date(2026, 9, 7), date(2026, 9, 13))
+
+    # Brittany has no Square availability at all - management enters it by hand.
+    brittany = Employee.objects.get(display_name="Brittany James")
+    EmployeeAvailability.objects.create(
+        employee=brittany,
+        date=date(2026, 9, 12),
+        availability_type=AvailabilityType.AVAILABLE_WINDOW,
+        start_time=time(17, 0),
+        end_time=time(23, 0),
+        source="MANAGEMENT_UI",
+    )
+
+    # Someone refreshes Square availability afterwards.
+    service.execute_sync(date(2026, 9, 7), date(2026, 9, 13))
+
+    kept = EmployeeAvailability.objects.filter(
+        employee=brittany, date=date(2026, 9, 12), source="MANAGEMENT_UI"
+    )
+    assert kept.count() == 1, "manual availability was destroyed by the resync"
+    entry = kept.get()
+    assert entry.start_time == time(17, 0)
+    assert entry.end_time == time(23, 0)
+
+    # And the engine must actually honour it despite Square reporting UNKNOWN.
+    result = LocalAvailabilityProvider().check(
+        brittany, date(2026, 9, 12), time(18, 0), time(22, 30)
+    )
+    assert result.available

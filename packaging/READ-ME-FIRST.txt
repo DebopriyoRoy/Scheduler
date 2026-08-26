@@ -1,0 +1,62 @@
+SPIRIT SCHEDULING ENGINE
+========================
+
+TO INSTALL (once per Mac)
+-------------------------
+1. Double-click  INSTALL.command
+2. If macOS says the file is from an unidentified developer:
+      right-click it -> Open -> Open
+3. Follow the prompts. It takes about five minutes.
+4. When it finishes you can eject this drive.
+
+You will be asked for a Square access token. Leave it blank if you only want to
+show the application - everything works except syncing to Square.
+
+You will also be asked to create the username and password you sign in with.
+
+
+TO RUN
+------
+Open the SpiritScheduler folder in your home directory and double-click
+START.command. Your browser opens automatically.
+
+Leave the black terminal window open while you use the application.
+Closing it stops the application.
+
+
+TO BACK UP
+----------
+Double-click BACKUP.command with this USB drive plugged in. It copies the
+database to a backups folder on the drive, stamped with the date.
+
+The database file is the only irreplaceable part of the installation. It holds
+every show, roster, availability record and audit note.
+
+
+WHAT IS ON THIS DRIVE
+---------------------
+  INSTALL.command   installer
+  START.command     launcher
+  BACKUP.command    database backup
+  source/           application code
+  db.sqlite3        the database
+
+There are no passwords or access tokens on this drive. They are entered during
+installation and stored only on the Mac you install to.
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+"Python 3.12 or newer was not found"
+      Install from https://www.python.org/downloads/macos/ and run
+      INSTALL.command again.
+
+The page loads but looks unstyled
+      The interface uses Bootstrap from the internet. Check the connection.
+
+Calendar sync fails
+      Open Terminal and run:
+      ~/SpiritScheduler/.venv/bin/python -m playwright install chromium
+
+Reinstalling does not erase your data. The installer keeps any existing
+database, settings and login it finds.

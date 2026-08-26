@@ -186,3 +186,35 @@ class SquareClient:
         payload = self._request("GET", f"/v2/labor/scheduled-shifts/{shift_id}")
         return dict(payload.get("scheduled_shift", {}))
 
+    def update_draft_shift(
+        self,
+        shift_id: str,
+        *,
+        version: int,
+        draft_shift_details: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Update an existing *draft* shift in place.
+
+        Correcting a field on an already-created draft otherwise requires deleting and
+        recreating it, and this client has no delete. Callers pass the shift's full
+        draft_shift_details with only the intended field changed, so anything not being
+        corrected is echoed back exactly as Square already holds it. `version` carries
+        Square's optimistic-concurrency token: the update is rejected rather than
+        silently overwriting if the shift changed since it was read.
+
+        This writes drafts only. assert_publishing_disabled() keeps it that way.
+        """
+        self.config.assert_write_allowed()
+        self.config.assert_publishing_disabled()
+        payload = self._request(
+            "PUT",
+            f"/v2/labor/scheduled-shifts/{shift_id}",
+            json={
+                "scheduled_shift": {
+                    "version": version,
+                    "draft_shift_details": dict(draft_shift_details),
+                }
+            },
+        )
+        return dict(payload.get("scheduled_shift", {}))
+

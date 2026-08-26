@@ -1,0 +1,98 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Availability comparison{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Availability comparison</h1>
+    <p class="text-muted mb-0">
+      What Square reports, next to what management entered by hand. Both feed the
+      scheduling engine; where they disagree, every window on file for a date counts.
+    </p>
+  </div>
+  <form class="d-flex align-items-end gap-2" method="get">
+    <div>
+      <label class="form-label small mb-1" for="start">From</label>
+      <input class="form-control form-control-sm" type="date" id="start" name="start" value="{{ start_date }}">
+    </div>
+    <div>
+      <label class="form-label small mb-1" for="end">To</label>
+      <input class="form-control form-control-sm" type="date" id="end" name="end" value="{{ end_date }}">
+    </div>
+    <button class="btn btn-sm btn-primary" type="submit">Show</button>
+  </form>
+</div>
+
+<div class="row g-2 mb-4">
+  {% for item in tally %}
+    <div class="col-6 col-md">
+      <div class="card border-{{ item.tone }} h-100">
+        <div class="card-body py-2 px-3">
+          <div class="fs-4 fw-semibold lh-1">{{ item.count }}</div>
+          <div class="small text-muted">{{ item.label }}</div>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+{% if blocked %}
+  <div class="alert alert-warning">
+    <strong>Not schedulable in this period:</strong>
+    {{ blocked|join:", " }}.
+    These staff have no availability on file from either source, so the engine cannot
+    consider them for any shift. Enter their availability on the
+    <a href="{% url 'availability' %}">Availability</a> page and they become eligible
+    immediately &mdash; a manual entry now survives a Square refresh.
+  </div>
+{% endif %}
+
+{% if show_dates %}
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle bg-white">
+      <thead class="table-light">
+        <tr>
+          <th scope="col" style="min-width:11rem">Staff member</th>
+          {% for d in show_dates %}
+            <th scope="col" class="text-center small">{{ d|date:"D" }}<br>{{ d|date:"d M" }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <th scope="row" class="fw-normal">
+              {{ row.employee.display_name }}
+              {% if row.missing %}
+                <span class="badge bg-light text-muted border">{{ row.missing }} blank</span>
+              {% endif %}
+            </th>
+            {% for cell in row.cells %}
+              <td class="text-center small p-1 table-{{ cell.tone }}">
+                {% if cell.status == "none" %}
+                  <span class="text-muted">&mdash;</span>
+                {% elif cell.status == "conflict" %}
+                  <div><span class="text-muted">SQ</span> {{ cell.square }}</div>
+                  <div><span class="text-muted">UI</span> {{ cell.manual }}</div>
+                {% elif cell.status == "manual_only" %}
+                  <div>{{ cell.manual }}</div>
+                  <div class="text-muted" style="font-size:.7rem">entered locally</div>
+                {% else %}
+                  {{ cell.square }}
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-muted small">
+    <strong>Differs</strong> means Square and the local entry both hold a window for that
+    date and they are not identical. Neither is discarded &mdash; the engine treats every
+    window on file as available time, so review these before generating a schedule.
+  </p>
+{% else %}
+  <div class="alert alert-info">No shows in this date range.</div>
+{% endif %}
+{% endblock %}

@@ -20,6 +20,11 @@ urlpatterns = [
         name="square_availability_sync",
     ),
     path("availability/template/", views.availability_template, name="availability_template"),
+    path(
+        "availability/comparison/",
+        views.availability_comparison,
+        name="availability_comparison",
+    ),
     path("configuration/rotations/", views.rotation_configuration, name="rotation_configuration"),
     path("schedules/", views.schedule_list, name="schedule_list"),
     path("schedules/generate/", views.schedule_generate, name="schedule_generate"),

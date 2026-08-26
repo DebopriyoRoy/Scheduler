@@ -64,6 +64,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Serves the collected static files directly from Django. Without it the app has
+    # no styling at all once DEBUG is off, because Django stops serving static files
+    # and the single-machine install has no separate web server in front of it.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -107,17 +111,34 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    # Compressed but deliberately not the *Manifest* variant: manifest storage refuses
+    # to resolve a static file unless collectstatic has already produced its manifest,
+    # which breaks the test suite and would turn a forgotten collectstatic into a hard
+    # 500 on the desktop install. Hashed filenames buy little here - one machine, one
+    # user, no CDN in front.
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
 
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SECURE_SSL_REDIRECT = not DEBUG
-SECURE_HSTS_SECONDS = 31_536_000 if not DEBUG else 0
-SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
-SECURE_HSTS_PRELOAD = not DEBUG
+# HTTPS-dependent hardening is keyed to whether the site is actually served over TLS,
+# not to DEBUG. Those are different questions: the single-machine desktop install runs
+# with DEBUG off (so errors are not exposed) but over plain http://127.0.0.1, where
+# SECURE_SSL_REDIRECT sends every request to an https:// address that does not exist
+# and the Secure cookie flags stop anyone logging in. Set DJANGO_HTTPS=true for a real
+# deployment behind TLS; leave it false for local desktop use.
+SERVE_OVER_HTTPS = env_bool("DJANGO_HTTPS", default=False)
+
+SESSION_COOKIE_SECURE = SERVE_OVER_HTTPS
+CSRF_COOKIE_SECURE = SERVE_OVER_HTTPS
+SECURE_SSL_REDIRECT = SERVE_OVER_HTTPS
+SECURE_HSTS_SECONDS = 31_536_000 if SERVE_OVER_HTTPS else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = SERVE_OVER_HTTPS
+SECURE_HSTS_PRELOAD = SERVE_OVER_HTTPS
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"

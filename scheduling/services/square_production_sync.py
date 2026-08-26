@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import time
@@ -60,6 +61,32 @@ def normalize_name(text: str) -> str:
     if not text:
         return ""
     return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def shift_idempotency_key(
+    assignment_id: int,
+    *,
+    team_member_id: str,
+    job_id: str,
+    location_id: str,
+    start_at: str,
+    end_at: str,
+    notes: str,
+) -> str:
+    """Content-addressed idempotency key for one draft shift.
+
+    Square replays the original response whenever it sees a key it has already
+    processed. A key built only from the assignment id and its updated_at timestamp
+    therefore pins Square to the first payload ever sent for that assignment: change
+    what we send - the shift notes, say - and a re-sync silently replays the stale
+    create instead of writing the new content, reporting success while nothing
+    actually changed. Hashing the payload means the key moves whenever the content
+    moves, while a genuine retry of an identical request stays idempotent.
+    """
+    fingerprint = hashlib.sha256(
+        "\x1f".join([team_member_id, job_id, location_id, start_at, end_at, notes]).encode()
+    ).hexdigest()[:16]
+    return f"spirit-shift-prod-{assignment_id}-{fingerprint}"
 
 
 class SquareProductionSyncError(Exception):
@@ -639,25 +666,22 @@ def create_production_pilot_shift(
     if not location_id:
         raise SquareSyncValidationError("No target Production Square location ID found.")
 
-    timestamp = int(assignment.updated_at.timestamp())
-    idempotency_key = f"spirit-shift-prod-v1-{assignment.id}-{timestamp}"
-
+    # Shift notes are read by staff in the Square app, so they carry only what is
+    # useful on the floor. Internal run bookkeeping is deliberately kept out of them.
     if assignment.assignment_type == "ON_CALL":
         notes = (
             f"Spirit Scheduling Engine\n"
             f"Show: {assignment.show.title}\n"
             f"Assignment: ON CALL {assignment.role.name}\n"
             f"Management confirmation required\n"
-            f"Expected Guests: {assignment.show.planning_guest_count}\n"
-            f"Schedule Run: #{schedule_run.id}"
+            f"Expected Guests: {assignment.show.planning_guest_count}"
         )
     else:
         notes = (
             f"Spirit Scheduling Engine\n"
             f"Show: {assignment.show.title}\n"
             f"Assignment: {assignment.get_assignment_type_display()}\n"
-            f"Expected Guests: {assignment.show.planning_guest_count}\n"
-            f"Schedule Run: #{schedule_run.id}"
+            f"Expected Guests: {assignment.show.planning_guest_count}"
         )
 
     prod_config = SquareConfig(
@@ -671,13 +695,24 @@ def create_production_pilot_shift(
     )
     client_instance = client or SquareClient(prod_config)
 
+    start_at = assignment.start_datetime.isoformat()
+    end_at = assignment.end_datetime.isoformat()
+    idempotency_key = shift_idempotency_key(
+        assignment.id,
+        team_member_id=emp_map.square_team_member_id,
+        job_id=role_map.square_job_id,
+        location_id=location_id,
+        start_at=start_at,
+        end_at=end_at,
+        notes=notes,
+    )
     draft_shift = client_instance.create_draft_shift(
         idempotency_key=idempotency_key,
         team_member_id=emp_map.square_team_member_id,
         job_id=role_map.square_job_id,
         location_id=location_id,
-        start_at=assignment.start_datetime.isoformat(),
-        end_at=assignment.end_datetime.isoformat(),
+        start_at=start_at,
+        end_at=end_at,
         notes=notes,
     )
 
@@ -777,15 +812,22 @@ def sync_full_production_schedule(
 
     for row in ready_rows:
         assignment = ScheduleAssignment.objects.get(pk=row.assignment_id)
-        timestamp = int(assignment.updated_at.timestamp())
-        idempotency_key = f"spirit-shift-prod-v1-{assignment.id}-{timestamp}"
 
+        # Staff-facing note: no internal run bookkeeping. See _create_single_shift().
         notes = (
             f"Spirit Scheduling Engine\n"
             f"Show: {assignment.show.title}\n"
             f"Assignment: {assignment.get_assignment_type_display()}\n"
-            f"Expected Guests: {assignment.show.planning_guest_count}\n"
-            f"Schedule Run: #{schedule_run.id}"
+            f"Expected Guests: {assignment.show.planning_guest_count}"
+        )
+        idempotency_key = shift_idempotency_key(
+            assignment.id,
+            team_member_id=row.square_team_member_id,
+            job_id=row.square_job_id,
+            location_id=preview.location_id,
+            start_at=row.start_at,
+            end_at=row.end_at,
+            notes=notes,
         )
 
         success = False

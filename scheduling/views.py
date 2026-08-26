@@ -909,3 +909,129 @@ def square_availability_sync(request):
     )
 
 
+
+
+@login_required
+def availability_comparison(request):
+    """Side-by-side view of what Square reports against what management entered.
+
+    Square is the operational source for staff who maintain availability there, but six
+    of the roster have nothing entered in it at all, so management records theirs by
+    hand. Both live in EmployeeAvailability, distinguished by `source`. This page makes
+    the two visible together so a disagreement is a decision rather than a surprise
+    discovered when someone turns up ineligible.
+    """
+    from scheduling.integrations.square_availability.service import (
+        SQUARE_AVAILABILITY_SOURCE,
+    )
+
+    start_date = _parse_selected_date(request.GET.get("start"))
+    end_date = _parse_selected_date(request.GET.get("end"))
+    if end_date < start_date:
+        end_date = start_date
+
+    show_dates = list(
+        Show.objects.filter(active=True, date__range=(start_date, end_date))
+        .values_list("date", flat=True)
+        .distinct()
+        .order_by("date")
+    )
+    employees = list(
+        Employee.objects.filter(active=True, excluded_from_automatic_scheduling=False).order_by(
+            "display_name"
+        )
+    )
+
+    entries = EmployeeAvailability.objects.filter(
+        employee__in=employees, date__in=show_dates
+    ).select_related("employee")
+
+    def describe(rows):
+        """Collapse the rows for one employee/date into a readable window string."""
+        rows = [r for r in rows if r.availability_type != AvailabilityType.UNKNOWN]
+        if not rows:
+            return ""
+        if any(r.availability_type == AvailabilityType.AVAILABLE_ALL_DAY for r in rows):
+            return "All day"
+        if all(r.availability_type == AvailabilityType.UNAVAILABLE for r in rows):
+            return "Unavailable"
+        windows = sorted(
+            f"{r.start_time:%H:%M}-{r.end_time:%H:%M}"
+            for r in rows
+            if r.availability_type == AvailabilityType.AVAILABLE_WINDOW
+            and r.start_time
+            and r.end_time
+        )
+        return ", ".join(windows)
+
+    grouped: dict[tuple[int, date], dict[str, list]] = {}
+    for entry in entries:
+        bucket = grouped.setdefault(
+            (entry.employee_id, entry.date), {"square": [], "manual": []}
+        )
+        key = "square" if entry.source == SQUARE_AVAILABILITY_SOURCE else "manual"
+        bucket[key].append(entry)
+
+    STATUS = {
+        "match": ("Agree", "success"),
+        "conflict": ("Differs", "warning"),
+        "square_only": ("Square only", "secondary"),
+        "manual_only": ("Entered locally", "info"),
+        "none": ("No availability", "light"),
+    }
+
+    rows = []
+    tally = {key: 0 for key in STATUS}
+    for employee in employees:
+        cells = []
+        for show_date in show_dates:
+            bucket = grouped.get((employee.id, show_date), {"square": [], "manual": []})
+            square_text = describe(bucket["square"])
+            manual_text = describe(bucket["manual"])
+            if square_text and manual_text:
+                status = "match" if square_text == manual_text else "conflict"
+            elif square_text:
+                status = "square_only"
+            elif manual_text:
+                status = "manual_only"
+            else:
+                status = "none"
+            tally[status] += 1
+            label, tone = STATUS[status]
+            cells.append(
+                {
+                    "date": show_date,
+                    "square": square_text,
+                    "manual": manual_text,
+                    "status": status,
+                    "label": label,
+                    "tone": tone,
+                }
+            )
+        rows.append(
+            {
+                "employee": employee,
+                "cells": cells,
+                "missing": sum(1 for c in cells if c["status"] == "none"),
+            }
+        )
+
+    # Staff the engine cannot consider at all: nothing on file from either source.
+    blocked = [r["employee"].display_name for r in rows if r["missing"] == len(show_dates)]
+
+    return render(
+        request,
+        "scheduling/availability_comparison.html",
+        {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "show_dates": show_dates,
+            "rows": rows,
+            "tally": [
+                {"key": k, "label": STATUS[k][0], "tone": STATUS[k][1], "count": v}
+                for k, v in tally.items()
+            ],
+            "blocked": blocked,
+            "total_cells": len(employees) * len(show_dates),
+        },
+    )
