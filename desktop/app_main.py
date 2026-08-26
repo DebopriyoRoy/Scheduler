@@ -24,6 +24,13 @@ DB_PATH = DATA_DIR / "db.sqlite3"
 KEY_PATH = DATA_DIR / "secret_key"
 ENV_PATH = DATA_DIR / "settings.env"
 
+# Where Chromium lives. Pinned explicitly and set before anything touches Playwright,
+# because the default inside a frozen app is a folder within the .app bundle itself:
+# the download lands in the user's cache while the launcher looks in the bundle, and
+# the two never meet. The bundle is read-only in any case.
+BROWSER_DIR = Path.home() / "Library" / "Caches" / "ms-playwright"
+os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(BROWSER_DIR))
+
 
 def bundle_dir() -> Path:
     """Where the bundled resources live, frozen or running from source."""
@@ -84,6 +91,43 @@ def prepare_data_dir() -> None:
         ENV_PATH.chmod(0o600)
 
 
+def ensure_browser_engine() -> None:
+    """Make sure Playwright's Chromium is present, fetching it once if it is not.
+
+    The show calendar is rendered in the browser, so importing shows needs a real
+    browser engine. Chromium is ~150 MB and lives in the user's cache directory rather
+    than inside the app, so it is downloaded on first use instead of shipped. This runs
+    in the background at startup: the app is usable immediately, and by the time anyone
+    opens the Shows page the engine is normally ready.
+    """
+    if BROWSER_DIR.exists() and any(BROWSER_DIR.glob("chromium_headless_shell-*")):
+        return
+
+    try:
+        import subprocess
+
+        from playwright._impl._driver import compute_driver_executable, get_driver_env
+
+        # Invoke Playwright's own bundled Node driver rather than "sys.executable -m
+        # playwright": inside a frozen app sys.executable is the app binary, not a
+        # Python interpreter, so the module form silently does nothing.
+        node, cli = compute_driver_executable()
+        Path(node).chmod(0o755)  # PyInstaller does not preserve the executable bit
+        env = get_driver_env()
+        env["PLAYWRIGHT_BROWSERS_PATH"] = str(BROWSER_DIR)
+        subprocess.run(
+            [node, cli, "install", "chromium"],
+            check=False,
+            capture_output=True,
+            timeout=900,
+            env=env,
+        )
+    except Exception:
+        # A failed download must never stop the app starting; the Shows page explains
+        # what to do if the engine is still missing when an import is attempted.
+        pass
+
+
 def configure_django(port: int) -> None:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "spirit_scheduler.settings")
     os.environ["DJANGO_SECRET_KEY"] = KEY_PATH.read_text().strip()
@@ -114,7 +158,39 @@ def open_when_ready(url: str, port: int) -> None:
         time.sleep(0.25)
 
 
+def run_calendar_sync(start: str, end: str) -> int:
+    """Calendar-sync mode: perform one import and exit, printing a result line.
+
+    The application re-invokes its own binary this way instead of driving the browser
+    inside a web request. Playwright needs asyncio subprocesses, which on Unix only
+    work on a process's main thread; from a request thread the interpreter dies and
+    takes the whole application with it.
+    """
+    import datetime as _dt
+
+    prepare_data_dir()
+    ensure_browser_engine()
+    configure_django(0)
+
+    import django
+
+    django.setup()
+
+    from django.core.management import call_command
+
+    call_command(
+        "sync_spirit_calendar",
+        start=_dt.date.fromisoformat(start).isoformat(),
+        end=_dt.date.fromisoformat(end).isoformat(),
+        json=True,
+    )
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) >= 4 and sys.argv[1] == "--sync-calendar":
+        return run_calendar_sync(sys.argv[2], sys.argv[3])
+
     prepare_data_dir()
 
     port = free_port()
@@ -147,6 +223,7 @@ def main() -> int:
         users.objects.create_superuser("manager", "", "spirit")
 
     threading.Thread(target=open_when_ready, args=(url, port), daemon=True).start()
+    threading.Thread(target=ensure_browser_engine, daemon=True).start()
 
     from django.core.management.commands.runserver import Command as RunServer
 

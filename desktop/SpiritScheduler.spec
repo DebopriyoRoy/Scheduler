@@ -7,7 +7,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 REPO = Path(SPECPATH).parent
 
@@ -16,6 +16,11 @@ hiddenimports = [
     *collect_submodules("spirit_scheduler"),
     *collect_submodules("scheduling"),
     *collect_submodules("integrations"),
+    "playwright",
+    "playwright.sync_api",
+    "playwright.async_api",
+    "greenlet",
+    "pyee",
     "whitenoise",
     "whitenoise.middleware",
     "whitenoise.storage",
@@ -30,6 +35,9 @@ datas = [
     (str(REPO / "scheduling" / "static"), "scheduling/static"),
     (str(REPO / "scheduling" / "migrations"), "scheduling/migrations"),
     (str(REPO / "staticfiles"), "staticfiles"),
+    # Playwright ships a Node driver alongside the Python package; without it the
+    # library imports but cannot launch anything.
+    *collect_data_files("playwright"),
 ]
 
 # The starter database ships inside the bundle and is copied out on first launch.
@@ -45,9 +53,11 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    # Playwright drives a 150 MB Chromium that cannot be bundled sensibly. The app
-    # runs without it; only the live calendar/availability scrape needs it.
-    excludes=["playwright", "pytest", "ruff", "PyInstaller", "psycopg", "tkinter"],
+    # Playwright is required, not optional: the show calendar is rendered entirely in
+    # the browser, so importing shows cannot work without a real browser engine. Only
+    # the Python package is bundled - Chromium itself lives in the user's cache
+    # directory and is fetched on first use by ensure_browser() in app_main.
+    excludes=["pytest", "ruff", "PyInstaller", "psycopg", "tkinter"],
     noarchive=False,
 )
 

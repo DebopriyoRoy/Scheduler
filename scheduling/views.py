@@ -1,7 +1,7 @@
 import csv
+import logging
 from datetime import date, datetime
 
-import requests
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -30,10 +30,10 @@ from scheduling.importers.availability import (
     import_availability_rows,
     parse_availability_csv,
 )
-from scheduling.importers.calendar import SpiritCalendarImporter
 from scheduling.models import (
     DEFAULT_EXPECTED_GUESTS,
     AvailabilityType,
+    CalendarSyncRun,
     Employee,
     EmployeeAvailability,
     FiftyFiftyRotationConfig,
@@ -52,6 +52,7 @@ from scheduling.models import (
     SquareSyncAuditLog,
     WarningSeverity,
 )
+from scheduling.services.calendar_import import CalendarImportError, run_calendar_import
 from scheduling.services.engine import IncompleteAvailabilityError, SchedulingEngine
 from scheduling.services.metrics import metrics_for_employee
 from scheduling.services.square_production_sync import (
@@ -71,6 +72,8 @@ from scheduling.services.square_sync import (
     validate_schedule_for_sync,
 )
 from scheduling.services.workflow import approve_schedule, override_assignment, resolve_warning
+
+logger = logging.getLogger(__name__)
 
 
 def square_connection_context() -> dict[str, object]:
@@ -210,17 +213,32 @@ def show_import(request):
 
     start = form.cleaned_data["start_date"]
     end = form.cleaned_data["end_date"]
+
+    # The show calendar is rendered entirely in the browser - none of the event titles
+    # exist in the page HTML - so it has to be read through a real browser engine, in a
+    # separate process. See scheduling.services.calendar_import for why.
     try:
-        summary = SpiritCalendarImporter().import_range(start, end)
-        messages.success(
-            request,
-            f"Imported {start:%d %b %Y} to {end:%d %b %Y} from the live calendar: "
-            f"{summary.created} added, {summary.updated} updated. "
-            "Nothing was duplicated or deleted.",
-        )
-    except (requests.RequestException, ValueError) as exc:
+        result = run_calendar_import(start, end)
+    except CalendarImportError as exc:
+        logger.warning("Live calendar import failed: %s", exc)
         messages.error(request, f"The live calendar could not be read: {exc}")
         return redirect("show_list")
+
+    note = (
+        f"Imported {start:%d %b %Y} to {end:%d %b %Y} from the live calendar: "
+        f"{result.received} show(s) found - {result.created} added, "
+        f"{result.updated} updated"
+        + (f", {result.unchanged} unchanged" if result.unchanged else "")
+        + "."
+    )
+    if result.is_partial:
+        messages.warning(
+            request,
+            f"{note} The calendar showed {result.rendered} events but only "
+            f"{result.extracted} could be read, so some may be missing. {result.notes}",
+        )
+    else:
+        messages.success(request, note)
 
     # Return to the list showing exactly the dates that were just imported.
     return redirect(f"{reverse('show_list')}?start={start:%Y-%m-%d}&end={end:%Y-%m-%d}")
@@ -861,7 +879,6 @@ def calendar_sync(request):
     from datetime import date
 
     from scheduling.integrations.spirit_calendar.service import SpiritCalendarSyncService
-    from scheduling.models import CalendarSyncRun
 
     start_date_str = request.GET.get("start") or request.POST.get("start") or "2026-09-07"
     end_date_str = request.GET.get("end") or request.POST.get("end") or "2026-10-03"

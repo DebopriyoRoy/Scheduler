@@ -35,6 +35,11 @@ class Command(BaseCommand):
             action="store_true",
             help="Preview sync without saving to database",
         )
+        parser.add_argument(
+            "--json",
+            action="store_true",
+            help="Emit a single machine-readable result line for the application to read",
+        )
 
     def handle(self, *args, **options):
         try:
@@ -82,5 +87,29 @@ class Command(BaseCommand):
                     f"Venue: {occ.venue} | Private: {occ.is_private} | Offsite: {occ.is_offsite}"
                 )
 
+            if options.get("json"):
+                self._emit_json(run)
+
         except Exception as exc:
+            if options.get("json"):
+                self._emit_json(None, error=str(exc))
+                return
             raise CommandError(f"Calendar Sync Command Failed: {exc}") from exc
+
+    def _emit_json(self, run, error: str = "") -> None:
+        """One parseable line for scheduling.services.calendar_import to read back."""
+        import json
+
+        from scheduling.services.calendar_import import RESULT_MARKER
+
+        payload = {"error": error} if error else {
+            "received": run.events_received,
+            "created": run.events_created,
+            "updated": run.events_updated,
+            "unchanged": run.events_unchanged,
+            "status": str(run.status),
+            "rendered": run.rendered_count,
+            "extracted": run.extracted_count,
+            "notes": run.notes or "",
+        }
+        self.stdout.write(RESULT_MARKER + json.dumps(payload))
