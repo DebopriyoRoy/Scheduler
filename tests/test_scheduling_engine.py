@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -7,6 +7,7 @@ from django.core.management import call_command
 from django.utils import timezone
 
 from scheduling.models import (
+    MINIMUM_VIABLE_GUESTS,
     AssignmentType,
     AvailabilityType,
     Employee,
@@ -18,9 +19,14 @@ from scheduling.models import (
     Role,
     ScheduleRunStatus,
     Show,
+    WarningSeverity,
     WarningType,
 )
 from scheduling.services.engine import ApprovedScheduleError, SchedulingEngine
+from scheduling.services.requirements import (
+    staffing_requirements_for,
+    templates_for_requirement,
+)
 
 
 @pytest.fixture
@@ -31,10 +37,12 @@ def configured_staff(db):
 
 
 def make_show(show_date=date(2026, 9, 12), **overrides):
+    # 80 guests is the buffer management plans against, and the bottom rung of the
+    # staffing ladder (3 confirmed servers, 1 on-call, 1 bartender + 1 on-call, 1 busser).
     values = {
         "title": f"Test Show {show_date}",
         "date": show_date,
-        "expected_guests": 100,
+        "expected_guests": 80,
         "requires_50_50": True,
     }
     values.update(overrides)
@@ -52,7 +60,8 @@ def make_all_available(employees, *dates):
 
 
 @pytest.mark.django_db
-def test_standard_100_guest_show_has_required_coverage(configured_staff):
+def test_standard_buffer_show_has_required_coverage(configured_staff):
+    """The 75-99 guest band: the crew management runs on an ordinary night."""
     show = make_show()
     make_all_available(configured_staff, show.date)
     run = SchedulingEngine().generate(show.date, show.date)
@@ -70,19 +79,78 @@ def test_standard_100_guest_show_has_required_coverage(configured_staff):
     assert run.assignments.filter(role__name="Busser").count() == 1
     assert run.assignments.filter(assignment_type=AssignmentType.FIFTY_FIFTY).count() == 1
     assert run.assignments.values("employee_id").distinct().count() == 8
+
+    # Shift windows anchor to this show's own doors (18:30) and wrap (22:30), so the Lead
+    # Server comes in 45 minutes before doors and leaves 15 minutes after wrap.
     lead = run.assignments.get(shift_template__code="lead-server")
-    assert timezone.localtime(lead.start_datetime).time() == time(15)
-    assert timezone.localtime(lead.end_datetime).time() == time(21, 30)
+    assert timezone.localtime(lead.start_datetime).time() == time(17, 45)
+    assert timezone.localtime(lead.end_datetime).time() == time(22, 45)
+
+    # On-call carries no setup buffer - exactly doors to wrap - and no paid hours.
     on_call = run.assignments.get(shift_template__code="on-call-server")
+    assert timezone.localtime(on_call.start_datetime).time() == time(18, 30)
+    assert timezone.localtime(on_call.end_datetime).time() == time(22, 30)
     assert on_call.scheduled_paid_hours == 0
-    assert on_call.on_call_hours == Decimal("5.50")
-    confirmed_hours = sum(
-        assignment.scheduled_paid_hours
-        for assignment in run.assignments.exclude(assignment_type=AssignmentType.ON_CALL)
-    )
-    assert confirmed_hours == Decimal("31.50")
-    assert sum(assignment.on_call_hours for assignment in run.assignments.all()) == Decimal("11.00")
+    assert on_call.on_call_hours == Decimal("4.00")
+
     assert run.status == ScheduleRunStatus.GENERATED
+
+
+@pytest.mark.django_db
+def test_staffing_ladder_scales_with_guest_count(configured_staff):
+    """Servers scale one per 25 guests; bar and busser step up with the ladder."""
+    expected = {
+        80: (3, 1, 1, 1, 1),
+        110: (4, 1, 2, 1, 1),
+        130: (5, 2, 2, 2, 2),
+        175: (6, 3, 3, 2, 2),
+    }
+    for index, (guests, counts) in enumerate(expected.items()):
+        show_date = date(2026, 9, 12) + timedelta(days=index * 7)
+        show = make_show(show_date, expected_guests=guests, requires_50_50=False)
+        requirements, outside_rules = staffing_requirements_for(show)
+        assert not outside_rules, f"{guests} guests fell outside the ladder"
+        actual = {r.role_name: (r.confirmed_count, r.on_call_count) for r in requirements}
+        assert actual["Server"] == (counts[0], counts[1]), guests
+        assert actual["Bartender"] == (counts[2], counts[3]), guests
+        assert actual["Busser"][0] == counts[4], guests
+        # Every band must have enough position templates to be fillable.
+        for requirement in requirements:
+            available = len(templates_for_requirement(requirement))
+            needed = requirement.confirmed_count + requirement.on_call_count
+            assert available == needed, f"{guests} guests: {requirement.role_name}"
+
+
+@pytest.mark.django_db
+def test_show_below_viability_threshold_is_not_staffed(configured_staff):
+    """A show under 75 guests is cancelled or its guests moved - never staffed."""
+    show = make_show(expected_guests=MINIMUM_VIABLE_GUESTS - 1)
+    make_all_available(configured_staff, show.date)
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    assert not run.assignments.exists()
+    warning = run.warnings.get(warning_type=WarningType.EVENT_STAFFING_REVIEW_REQUIRED)
+    assert warning.message.startswith("BELOW_VIABILITY_THRESHOLD")
+
+
+@pytest.mark.django_db
+def test_show_that_runs_below_three_confirmed_servers_escalates(configured_staff):
+    """Three confirmed servers is a floor, not a target: a breach blocks the run."""
+    show = make_show(requires_50_50=False)
+    make_all_available(configured_staff, show.date)
+    # Leave exactly one server-qualified employee available.
+    keep = Employee.objects.get(display_name="Olena")
+    EmployeeRole.objects.filter(role__name="Server").exclude(employee=keep).update(active=False)
+
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    breach = run.warnings.filter(
+        warning_type=WarningType.SERVER_SHORTAGE,
+        message__startswith="BELOW_SERVER_FLOOR",
+        severity=WarningSeverity.ERROR,
+    )
+    assert breach.exists()
+    assert run.status == ScheduleRunStatus.NEEDS_REVIEW
 
 
 @pytest.mark.django_db
@@ -99,6 +167,7 @@ def test_unavailable_or_unknown_employee_is_never_scheduled(configured_staff, av
     entry.save()
     run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
     assert not run.assignments.filter(employee=olena).exists()
+    # The floor still holds: losing one person is covered from the rest of the pool.
     assert (
         run.assignments.filter(
             role__name="Server", assignment_type=AssignmentType.CONFIRMED
@@ -115,7 +184,14 @@ def test_role_qualification_is_a_hard_constraint(configured_staff):
     EmployeeRole.objects.filter(role=server_role).update(active=False)
     run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
     assert not run.assignments.filter(role=server_role).exists()
-    assert run.warnings.filter(warning_type=WarningType.SERVER_SHORTAGE).count() == 3
+    # One shortage warning per unfillable confirmed server position, plus the floor breach.
+    assert (
+        run.warnings.filter(warning_type=WarningType.SERVER_SHORTAGE)
+        .exclude(message__startswith="BELOW_SERVER_FLOOR")
+        .count()
+        == 3
+    )
+    assert run.warnings.filter(message__startswith="BELOW_SERVER_FLOOR").count() == 1
 
 
 @pytest.mark.django_db
@@ -262,10 +338,20 @@ def test_approved_schedule_cannot_be_regenerated(configured_staff):
 
 
 @pytest.mark.django_db
-def test_high_guest_count_creates_review_warning(configured_staff):
-    show = make_show(expected_guests=120, requires_50_50=False)
-    make_all_available(configured_staff, show.date)
-    run = SchedulingEngine().generate(show.date, show.date)
+def test_guest_count_above_the_ladder_creates_review_warning(configured_staff):
+    # 120 guests now sits inside the ladder (the 100-124 band) and needs no review.
+    inside = make_show(date(2026, 9, 12), expected_guests=120, requires_50_50=False)
+    make_all_available(configured_staff, inside.date)
+    run = SchedulingEngine().generate(inside.date, inside.date, allow_shortages=True)
+    assert not run.warnings.filter(warning_type=WarningType.HIGH_GUEST_COUNT_REVIEW).exists()
+
+    # Above the top of the ladder, staffing falls back to the highest band and management
+    # has to sign it off.
+    beyond = make_show(
+        date(2026, 9, 19), expected_guests=200, capacity=250, requires_50_50=False
+    )
+    make_all_available(configured_staff, beyond.date)
+    run = SchedulingEngine().generate(beyond.date, beyond.date, allow_shortages=True)
     assert run.warnings.filter(warning_type=WarningType.HIGH_GUEST_COUNT_REVIEW).exists()
     assert run.status == ScheduleRunStatus.NEEDS_REVIEW
 

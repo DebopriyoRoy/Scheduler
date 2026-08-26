@@ -133,25 +133,38 @@ def test_joleen_daily_1600_2300():
 
 @pytest.mark.django_db
 def test_kate_weekday_and_weekend_windows():
-    """Verify Kate weekday/weekend windows and unavailability on Friday/Saturday."""
+    """Verify Kate's corrected weekday/weekend windows and her blank Fridays.
+
+    Her Thursday entry reads 17:30-21:30 on the live Square Availability page; an earlier
+    transcription recorded it as 05:30 and made her look available for afternoon setup she
+    cannot actually work. Saturday was missing from that same transcription.
+    """
     service = SquareAvailabilitySyncService()
     service.execute_sync(date(2026, 9, 7), date(2026, 9, 13))
 
     kate = Employee.objects.get(display_name="Kate")
     local_provider = LocalAvailabilityProvider()
 
-    # Thursday 2026-09-10 (05:30-21:30) covers Lead Server 15:00-21:30
-    res_thu = local_provider.check(kate, date(2026, 9, 10), time(15, 0), time(21, 30))
+    # Thursday 2026-09-10 is 17:30-21:30: covers the evening window exactly ...
+    res_thu = local_provider.check(kate, date(2026, 9, 10), time(17, 30), time(21, 30))
     assert res_thu.available
 
-    # Friday 2026-09-11 is UNKNOWN
+    # ... but not a Lead Server shift that starts at 15:00.
+    res_thu_lead = local_provider.check(kate, date(2026, 9, 10), time(15, 0), time(21, 30))
+    assert not res_thu_lead.available
+
+    # Friday 2026-09-11 is UNKNOWN - Kate has no Friday availability entered at all.
     res_fri = local_provider.check(kate, date(2026, 9, 11), time(17, 0), time(23, 0))
     assert not res_fri.available
     assert res_fri.availability_type == AvailabilityType.UNKNOWN
 
-    # Saturday 2026-09-12 is UNKNOWN
-    res_sat = local_provider.check(kate, date(2026, 9, 12), time(17, 0), time(23, 0))
-    assert not res_sat.available
+    # Saturday 2026-09-12 is 16:00-20:30: covers an early evening window ...
+    res_sat = local_provider.check(kate, date(2026, 9, 12), time(16, 0), time(20, 30))
+    assert res_sat.available
+
+    # ... and still rules out a shift running to 23:00.
+    res_sat_late = local_provider.check(kate, date(2026, 9, 12), time(17, 0), time(23, 0))
+    assert not res_sat_late.available
 
 
 @pytest.mark.django_db
@@ -174,21 +187,30 @@ def test_linda_weekend_only_availability():
 
 
 @pytest.mark.django_db
-def test_molly_wed_fri_1730_2130_cannot_cover_server():
-    """Verify Molly Rittwage 17:30-21:30 cannot cover normal Server 17:00-23:00 shift."""
+def test_molly_evening_window_covers_on_call_but_not_a_full_server_shift():
+    """Verify Molly Rittwage's 18:00-22:30 evening window is on-call shaped.
+
+    Per management direction Molly is available every evening 18:00-22:30 and is
+    specifically suited to on-call work: her window covers a doors-to-wrap on-call shift
+    exactly, but not a confirmed Server shift that starts before doors or runs past wrap.
+    """
     service = SquareAvailabilitySyncService()
     service.execute_sync(date(2026, 9, 7), date(2026, 9, 13))
 
     molly = Employee.objects.get(display_name="Molly Rittwage")
     local_provider = LocalAvailabilityProvider()
 
-    # Wednesday 2026-09-09 (17:30-21:30) vs Server 17:00-23:00 -> INELIGIBLE
+    # On-call runs exactly doors (18:30) to wrap (22:30) -> covered.
+    res_on_call = local_provider.check(molly, date(2026, 9, 9), time(18, 30), time(22, 30))
+    assert res_on_call.available
+
+    # A confirmed Server shift starting at 17:00 is outside her window.
     res_srv = local_provider.check(molly, date(2026, 9, 9), time(17, 0), time(23, 0))
     assert not res_srv.available
 
-    # Saturday 2026-09-12 -> UNKNOWN
+    # Her window is every day of the week, so Saturday is available too.
     res_sat = local_provider.check(molly, date(2026, 9, 12), time(18, 0), time(21, 30))
-    assert not res_sat.available
+    assert res_sat.available
 
 
 @pytest.mark.django_db
@@ -333,10 +355,12 @@ def test_completeness_sanity_check_13_dates():
     summary = service.execute_sync(date(2026, 9, 7), date(2026, 10, 3), event_dates=event_dates)
     run = summary.sync_run
 
+    # Counts reflect the corrected Kate transcription (Thursday 17:30 not 05:30, plus her
+    # previously-missing Saturday) and Molly's management-directed every-evening window.
     assert run.total_employee_date_combinations == 221
-    assert run.known_employee_date_combinations == 116
-    assert run.unknown_employee_date_combinations == 105
-    assert run.available_window_combinations == 109
-    assert run.available_window_records == 130
+    assert run.known_employee_date_combinations == 126
+    assert run.unknown_employee_date_combinations == 95
+    assert run.available_window_combinations == 117
+    assert run.available_window_records == 138
     assert run.all_day_combinations == 7
-    assert float(run.completeness_percentage) == 52.5
+    assert float(run.completeness_percentage) == 57.0
