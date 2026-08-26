@@ -37,10 +37,68 @@ AVAILABILITY_URL = "https://app.squareup.com/dashboard/shifts/schedule/availabil
 WEEKDAY_HEADERS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 PAGE_SETTLE_MS = 9000
 
-# "5:30 pm – 11:59 pm", with an en dash, occasionally a hyphen.
-WINDOW = re.compile(
-    r"(\d{1,2}:\d{2}\s*[ap]\.?m\.?)\s*[–\-—]\s*(\d{1,2}:\d{2}\s*[ap]\.?m\.?)", re.I
-)
+# Square renders a window as two clock times joined by an en dash, and it drops
+# whatever it considers redundant: the minutes when they are zero, and the meridiem on
+# the start time when it matches the end. Every cell on the real dashboard looks like
+# one of "5:30 – 11:59 pm", "1 – 10 pm", "4 – 8:30 pm", "7 – 11 pm", "11 am – 4 pm".
+#
+# The pattern that came before this one required ":MM" *and* a meridiem on both sides,
+# so it matched none of those - not one real cell - and every windowed day was reported
+# as UNKNOWN. Because UNKNOWN is indistinguishable from "Square holds nothing", the
+# sync looked like it was working and the hours it appeared to return were really the
+# hand-typed fallback dict, complete with its 05:30 transcription of Kate's Thursday.
+CLOCK = r"(\d{1,2})(?::(\d{2}))?\s*(?:([ap])\.?\s*m\.?)?"
+WINDOW = re.compile(CLOCK + r"\s*[–—-]\s*" + CLOCK, re.I)
+
+
+def _to_24h(hour: int, minute: int, meridiem: str | None) -> time | None:
+    """One clock reading to a time, or None if it is not a real one."""
+    if not 0 <= minute <= 59:
+        return None
+    if meridiem is None:
+        return time(hour, minute) if 0 <= hour <= 23 else None
+    if not 1 <= hour <= 12:
+        return None
+    if meridiem.lower() == "a":
+        return time(0 if hour == 12 else hour, minute)
+    return time(12 if hour == 12 else hour + 12, minute)
+
+
+def _resolve_window(match: re.Match) -> tuple[time, time] | None:
+    """Both ends of one window, filling in whichever meridiem Square left out.
+
+    An omitted meridiem is only ever omitted because it repeats the other end's, so
+    borrowing is safe - and where borrowing would put the end before the start
+    ("10 – 4 pm"), the start must be the other half of the day.
+    """
+    start_hour, start_min, start_mer, end_hour, end_min, end_mer = match.groups()
+    start_hour, end_hour = int(start_hour), int(end_hour)
+    start_min, end_min = int(start_min or 0), int(end_min or 0)
+
+    if start_mer is None and end_mer is None:
+        # Nothing to borrow. Only read it as a 24-hour clock if it cannot be a 12-hour
+        # one; otherwise the day half is a genuine coin flip and guessing it wrong
+        # either invents availability or destroys it.
+        if start_hour <= 12 and end_hour <= 12:
+            return None
+        start, end = _to_24h(start_hour, start_min, None), _to_24h(end_hour, end_min, None)
+    elif start_mer is None:
+        start = _to_24h(start_hour, start_min, end_mer)
+        end = _to_24h(end_hour, end_min, end_mer)
+        if start and end and start >= end:
+            start = _to_24h(start_hour, start_min, "a" if end_mer.lower() == "p" else "p")
+    elif end_mer is None:
+        start = _to_24h(start_hour, start_min, start_mer)
+        end = _to_24h(end_hour, end_min, start_mer)
+        if start and end and end <= start:
+            end = _to_24h(end_hour, end_min, "p" if start_mer.lower() == "a" else "a")
+    else:
+        start = _to_24h(start_hour, start_min, start_mer)
+        end = _to_24h(end_hour, end_min, end_mer)
+
+    if start is None or end is None or end <= start:
+        return None
+    return start, end
 
 
 @dataclass(frozen=True)
@@ -51,16 +109,6 @@ class WeeklyGrid:
 
     def names(self) -> list[str]:
         return sorted(self.rows)
-
-
-def _parse_clock(text: str) -> time | None:
-    cleaned = text.strip().replace(".", "").upper().replace(" ", "")
-    for fmt in ("%I:%M%p", "%H:%M"):
-        try:
-            return datetime.strptime(cleaned, fmt).time()
-        except ValueError:
-            continue
-    return None
 
 
 def parse_cell(cell: str) -> tuple[AvailabilityState, time | None, time | None]:
@@ -78,14 +126,21 @@ def parse_cell(cell: str) -> tuple[AvailabilityState, time | None, time | None]:
     if "unavailable" in lowered or "not available" in lowered:
         return AvailabilityState.UNAVAILABLE, None, None
 
-    match = WINDOW.search(text)
-    if match:
-        start, end = _parse_clock(match.group(1)), _parse_clock(match.group(2))
-        if start and end:
-            return AvailabilityState.AVAILABLE_WINDOW, start, end
-
+    # "All day" is checked before the window pattern: the words carry no digits, but
+    # a cell can hold both, and the explicit statement should win.
     if "all day" in lowered:
         return AvailabilityState.AVAILABLE_ALL_DAY, None, None
+
+    windows = [w for w in (_resolve_window(m) for m in WINDOW.finditer(text)) if w]
+    if windows:
+        # A split day ("10 – 2 pm, 5 – 9 pm") has to collapse to one window, because
+        # one record holds one. Take the longest: it is the most useful of the two and
+        # never claims a minute Square did not give, whereas spanning them end to end
+        # would invent availability across the gap.
+        start, end = max(windows, key=lambda w: (datetime.combine(date.min, w[1])
+                                                 - datetime.combine(date.min, w[0])))
+        return AvailabilityState.AVAILABLE_WINDOW, start, end
+
     if "available" in lowered:
         # Marked available, but Square gave no window we could read. Say so rather
         # than inventing one.

@@ -46,6 +46,7 @@ from scheduling.models import (
     ScheduleRunStatus,
     SchedulingWarning,
     Show,
+    SquareAvailabilitySyncRun,
     SquareEmployeeMapping,
     SquareEnvironmentChoices,
     SquareRoleMapping,
@@ -123,6 +124,13 @@ def dashboard(request):
     )
 
 
+# How long a roster-page sync reaches forward. Square holds availability as a
+# repeating weekly pattern, but this application stores it per date, so a sync has to
+# write a row for every date it wants covered. Eighteen weeks comfortably spans the
+# two-week publishing lead plus the Christmas season.
+AVAILABILITY_SYNC_DAYS = 126
+
+
 @login_required
 def employees(request):
     """The roster and everyone's usual weekly availability on one page.
@@ -132,7 +140,13 @@ def employees(request):
     date, so the weekly pattern is derived: for each weekday, the window an employee
     most commonly holds. That is how Square records it and how management think about
     it - "Kate does Wednesday evenings" - rather than as several hundred dated rows.
+
+    The button posts back here and re-reads Square directly, because this is the page
+    where a wrong window is noticed and it should be the page where it is fixed.
     """
+    if request.method == "POST":
+        return _sync_availability_from_square(request)
+
     WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
     staff = list(
@@ -157,28 +171,62 @@ def employees(request):
             return "Unavailable"
         return ""  # UNKNOWN: nothing on file for that day
 
-    # Two passes, because the two kinds of record answer different questions.
+    # Which row wins for a given weekday, in order of authority:
     #
-    # A later sync saying UNKNOWN has to be able to clear an earlier "available",
-    # otherwise a retired source keeps asserting hours that no longer exist: six staff
-    # carry rows from a superseded feed claiming they are free all day Monday through
-    # Wednesday, while every current sync reports nothing for them at all and the
-    # engine rightly refuses to schedule them. Showing those stale hours here would
-    # contradict the rest of the application.
+    #   1. anything a person typed in    - the only availability on file for staff
+    #                                      Square knows nothing about; a sync must
+    #                                      never erase or override it
+    #   2. a real Square dashboard read
+    #   3. the fixture stand-in          - hand-transcribed hours used only when no
+    #                                      dashboard session exists
+    #   4. a retired provider            - ignored outright
     #
-    # Anything entered by hand outranks all of it. That is the only availability on
-    # file for staff Square knows nothing about, and a sync must never erase it.
+    # Ordering by availability *date* was the bug behind seventeen staff showing "All
+    # day" every Monday and Sunday. The retired feed wrote rows dated September; the
+    # current sync writes rows through December. Sorting by date therefore let a row
+    # written months ago outrank one written minutes ago, because its date was
+    # further in the future. What settles which value is current is when the row was
+    # *written*, which is updated_at.
+    from scheduling.integrations.square_availability.service import (
+        FALLBACK_AVAILABILITY_SOURCE,
+        RETIRED_AVAILABILITY_SOURCES,
+        SQUARE_AVAILABILITY_SOURCE,
+    )
+
+    def authority(entry) -> int:
+        if entry.source == SQUARE_AVAILABILITY_SOURCE:
+            return 2
+        if entry.source == FALLBACK_AVAILABILITY_SOURCE:
+            return 1
+        return 3  # entered by hand
+
     windows: dict[int, dict[int, str]] = {e.id: {} for e in staff}
-    entries = list(EmployeeAvailability.objects.filter(employee__in=staff).order_by("date"))
+    best: dict[tuple[int, int], tuple[int, datetime, date]] = {}
+    entries = (
+        EmployeeAvailability.objects.filter(employee__in=staff)
+        .exclude(source__in=RETIRED_AVAILABILITY_SOURCES)
+        .order_by("date")
+    )
 
     for entry in entries:
-        if entry.source.startswith("LIVE_"):
-            windows[entry.employee_id][entry.date.weekday()] = describe(entry)
-    for entry in entries:
-        if not entry.source.startswith("LIVE_"):
-            text = describe(entry)
-            if text:
-                windows[entry.employee_id][entry.date.weekday()] = text
+        key = (entry.employee_id, entry.date.weekday())
+        rank = (authority(entry), entry.updated_at, entry.date)
+        if key in best and best[key] >= rank:
+            continue
+        best[key] = rank
+        windows[entry.employee_id][entry.date.weekday()] = describe(entry)
+
+    live_sources = set(
+        EmployeeAvailability.objects.filter(employee__in=staff)
+        .exclude(source__in=RETIRED_AVAILABILITY_SOURCES)
+        .values_list("source", flat=True)
+        .distinct()
+    )
+    mapped_ids = set(
+        SquareEmployeeMapping.objects.filter(environment="production").values_list(
+            "employee_id", flat=True
+        )
+    )
 
     rows = []
     for employee in staff:
@@ -202,8 +250,14 @@ def employees(request):
                 "pattern": pattern,
                 "days_known": known,
                 "roles": list(employee.employee_roles.all()),
+                "square_mapped": employee.id in mapped_ids,
             }
         )
+
+    from scheduling.integrations.square_session import session_status
+
+    last_sync = SquareAvailabilitySyncRun.objects.order_by("-started_at").first()
+    session = session_status()
 
     return render(
         request,
@@ -212,8 +266,58 @@ def employees(request):
             "rows": rows,
             "weekdays": WEEKDAYS,
             "no_availability": [r["employee"].display_name for r in rows if not r["days_known"]],
+            "session_connected": session.connected,
+            "session_detail": session.detail,
+            "last_sync": last_sync,
+            # Says out loud when the hours on screen are a stand-in rather than
+            # Square's own answer. That distinction was invisible before, and its
+            # invisibility is what let transcribed hours pass as live ones.
+            "using_fallback": FALLBACK_AVAILABILITY_SOURCE in live_sources,
+            "sync_days": AVAILABILITY_SYNC_DAYS,
         },
     )
+
+
+def _sync_availability_from_square(request):
+    """Read the availability grid from Square and replace what the sync owns.
+
+    The read runs in its own process. Playwright drives browsers through asyncio
+    subprocesses, which on Unix need a process's main thread; called from a request
+    thread the interpreter dies outright and takes the application with it.
+    """
+    from scheduling.services.square_pull import SquarePullError, run_availability_sync
+
+    start = date.today()
+    end = start + timedelta(days=AVAILABILITY_SYNC_DAYS)
+
+    try:
+        result = run_availability_sync(start, end)
+    except SquarePullError as exc:
+        messages.error(request, f"Could not read availability from Square: {exc}")
+        return redirect("employees")
+
+    if not result.get("live"):
+        messages.warning(
+            request,
+            "Square was not read. These hours come from the built-in fallback, which "
+            "is transcribed by hand and out of date. Connect the Square dashboard "
+            "(manage.py square_connect) and sync again.",
+        )
+        return redirect("employees")
+
+    detail = (
+        f"Availability synced from Square: {result['known']} of {result['total']} "
+        f"employee/date entries known ({result['completeness']}%), "
+        f"{start:%d %b} to {end:%d %b %Y}."
+    )
+    unmatched = result.get("unmatched") or []
+    if unmatched:
+        detail += (
+            f" {len(unmatched)} name(s) in Square matched nobody on the roster: "
+            f"{', '.join(unmatched[:6])}."
+        )
+    messages.success(request, detail)
+    return redirect("employees")
 
 
 @login_required

@@ -86,10 +86,29 @@ class AvailabilityAnalysisSummary:
     kate_records: tuple[NormalizedAvailabilityRecord, ...]
 
 
-# Provenance marker on EmployeeAvailability rows written by a Square sync.
-# Rows carrying any other source (management UI entry, CSV import) are owned by
-# management and must survive a resync.
+# Provenance markers on EmployeeAvailability rows written by a sync.
+#
+# These have to be distinct. Until now the fixture fallback wrote its hand-typed
+# windows under the same marker as a genuine dashboard read, so nothing downstream
+# could tell Square's hours from a transcription of them - which is precisely how a
+# parser that returned no windows at all went unnoticed: the dict quietly supplied
+# the numbers and they looked live. A row must say where it actually came from.
 SQUARE_AVAILABILITY_SOURCE = "LIVE_SQUARE_PRODUCTION"
+FALLBACK_AVAILABILITY_SOURCE = "FALLBACK_FIXTURE_AVAILABILITY"
+
+# Written by a provider that no longer exists. Kept only so a sync can clear them.
+RETIRED_AVAILABILITY_SOURCES = ("LIVE_SQUARE_AVAILABILITY",)
+
+# Everything a sync owns and may therefore overwrite. Rows carrying any other source
+# (management UI entry, CSV import) belong to management and must survive a resync.
+SYNC_OWNED_SOURCES = (
+    SQUARE_AVAILABILITY_SOURCE,
+    FALLBACK_AVAILABILITY_SOURCE,
+    *RETIRED_AVAILABILITY_SOURCES,
+)
+
+# The provider name a real dashboard read reports. Anything else is a stand-in.
+LIVE_PROVIDER_NAME = "LIVE_SQUARE_DASHBOARD"
 
 
 class SquareAvailabilitySyncService:
@@ -164,6 +183,14 @@ class SquareAvailabilitySyncService:
         sync_run.provider = provider_used
         sync_run.records_received = len(records)
 
+        # Tag rows with the provider that actually produced them, so a fixture stand-in
+        # can never again be mistaken for Square's own answer.
+        written_source = (
+            SQUARE_AVAILABILITY_SOURCE
+            if provider_used == LIVE_PROVIDER_NAME
+            else FALLBACK_AVAILABILITY_SOURCE
+        )
+
         # Build lookup map: (employee_name, record_date) -> list[NormalizedAvailabilityRecord]
         record_map: dict[tuple[str, date], list[NormalizedAvailabilityRecord]] = defaultdict(list)
         for rec in records:
@@ -205,8 +232,12 @@ class SquareAvailabilitySyncService:
                 # survive a refresh, and LocalAvailabilityProvider reads the union of all
                 # rows for a date, so a hand-entered window still counts even when Square
                 # reports UNKNOWN for the same day.
+                # Every sync-owned source, not just the current one: rows from a
+                # retired provider otherwise linger forever, asserting hours nobody
+                # holds. Seventeen staff carried "all day" Mondays and Sundays from
+                # exactly that, and the roster page believed them.
                 EmployeeAvailability.objects.filter(
-                    employee=emp, date=ed, source=SQUARE_AVAILABILITY_SOURCE
+                    employee=emp, date=ed, source__in=SYNC_OWNED_SOURCES
                 ).delete()
                 recs = record_map.get((emp.display_name.lower(), ed), [])
 
@@ -216,7 +247,7 @@ class SquareAvailabilitySyncService:
                         employee=emp,
                         date=ed,
                         availability_type=AvailabilityType.UNKNOWN,
-                        source=SQUARE_AVAILABILITY_SOURCE,
+                        source=written_source,
                     )
                     matrix_cells.append(
                         AvailabilityMatrixCell(
@@ -270,7 +301,7 @@ class SquareAvailabilitySyncService:
                             availability_type=av_type,
                             start_time=st,
                             end_time=et,
-                            source=SQUARE_AVAILABILITY_SOURCE,
+                            source=written_source,
                         )
 
                         matrix_cells.append(
