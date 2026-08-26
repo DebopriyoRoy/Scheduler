@@ -140,10 +140,23 @@ class PlaywrightAvailabilityProvider(BaseAvailabilityProvider):
     def provider_name(self) -> str:
         return "MANUAL_VERIFIED_SQUARE_AVAILABILITY_SNAPSHOT"
 
+    @property
+    def is_live(self) -> bool:
+        """False. This provider does not contact Square.
+
+        Named for an intention that was never implemented: it makes no network call at
+        all, and generates records from WEEKLY_AVAILABILITY_RULES above - a set of
+        windows transcribed by hand. Every eligibility decision the engine makes rests
+        on that transcription, which is how Kate's Thursday came to read 05:30 instead
+        of 17:30, and why six staff appear permanently unschedulable. Replacing it
+        needs a signed-in dashboard session; see scheduling.integrations.square_session.
+        """
+        return False
+
     def fetch_availability(
         self, start_date: date, end_date: date, team_member_ids: Sequence[str] | None = None
     ) -> list[NormalizedAvailabilityRecord]:
-        """Reads and normalizes live availability records according to verified Square rules."""
+        """Generate records from the hand-transcribed rules. Not read from Square."""
         records: list[NormalizedAvailabilityRecord] = []
 
         active_employees = list(Employee.objects.filter(active=True))
