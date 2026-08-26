@@ -150,9 +150,13 @@ def compare_run_with_square(schedule_run: ScheduleRun) -> ReconcileReport:
 
     square_side: dict[tuple[str, dt.date], dict] = {}
     for shift in shifts:
-        draft = shift.get("draft_shift_details")
-        details = draft or shift.get("shift_details") or {}
-        if draft is None:
+        # A published shift keeps its draft_shift_details alongside
+        # published_shift_details, so the presence of draft details says nothing about
+        # whether staff can see it. Checking for draft details alone reported an
+        # entire published week as unpublished.
+        published = shift.get("published_shift_details")
+        details = published or shift.get("draft_shift_details") or {}
+        if published:
             report.published_count += 1
         started = details.get("start_at", "")
         if not started:
@@ -166,7 +170,7 @@ def compare_run_with_square(schedule_run: ScheduleRun) -> ReconcileReport:
             "start_raw": started,
             "end_raw": details.get("end_at", ""),
             "shift_id": shift.get("id", ""),
-            "published": draft is None,
+            "published": bool(published),
         }
     report.square_total = len(square_side)
 

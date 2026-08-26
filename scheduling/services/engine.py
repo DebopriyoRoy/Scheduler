@@ -57,6 +57,7 @@ ROLE_START_OFFSET_MINUTES = {
     "server-4": 30,
     "server-5": 30,
     "server-6": 30,
+    "server-7": 30,
     "on-call-server": 0,
     "on-call-server-2": 0,
     "on-call-server-3": 0,
@@ -75,6 +76,7 @@ ROLE_END_OFFSET_MINUTES = {
     "server-4": 15,
     "server-5": 15,
     "server-6": 15,
+    "server-7": 15,
     "on-call-server": 0,
     "on-call-server-2": 0,
     "on-call-server-3": 0,
@@ -421,6 +423,7 @@ class SchedulingEngine:
         targets: dict[int, Decimal] = {}
         spirit_only_ids: set[int] = set()
         carry_in_hours: dict[int, Decimal] = {}
+        preferred_role_ids: dict[int, int] = {}
         for employee in Employee.objects.filter(active=True).select_related(
             "scheduling_preference"
         ):
@@ -430,8 +433,15 @@ class SchedulingEngine:
             if employee.spirit_only_employment or employee.employment_priority > 0:
                 spirit_only_ids.add(employee.id)
             carry_in_hours[employee.id] = employee.opening_recent_hours
+            if pref and pref.preferred_role_id:
+                preferred_role_ids[employee.id] = pref.preferred_role_id
 
-        allocator = GlobalAllocator(targets, spirit_only_ids, carry_in_hours=carry_in_hours)
+        allocator = GlobalAllocator(
+            targets,
+            spirit_only_ids,
+            carry_in_hours=carry_in_hours,
+            preferred_role_ids=preferred_role_ids,
+        )
 
         # Stage A: build the full eligibility graph before committing anything.
         slots: list[Slot] = []

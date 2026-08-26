@@ -33,6 +33,7 @@ WEIGHT_OPPORTUNITY_SCARCITY = 0.20
 WEIGHT_SHIFT_COUNT_DEFICIT = 0.15
 WEIGHT_CARRY_IN_HISTORY = 0.12
 WEIGHT_SPIRIT_ONLY = 0.10
+WEIGHT_ROLE_PREFERENCE = 0.08
 WEIGHT_WEEKEND_BALANCE = 0.05
 
 PENALTY_CONSECUTIVE_NIGHT = 0.12
@@ -76,12 +77,18 @@ class GlobalAllocator:
         spirit_only_ids: set[int],
         on_call_target_hours: dict[int, Decimal] | None = None,
         carry_in_hours: dict[int, Decimal] | None = None,
+        preferred_role_ids: dict[int, int] | None = None,
     ):
         self.targets = targets
         self.spirit_only_ids = spirit_only_ids
         self.on_call_targets = on_call_target_hours or {}
         self.totals: dict[int, RunningTotals] = {}
         self.carry_in_hours = carry_in_hours or {}
+        # Where a cross-trained employee would rather work. Jackie Pynn holds both bar
+        # and floor qualifications but wants the floor, and the published rosters bear
+        # that out. A nudge, never a gate: bar cover is still reserved first, so she
+        # will still take the bar when nobody else can.
+        self.preferred_role_ids = preferred_role_ids or {}
         self._max_carry_in = float(max(self.carry_in_hours.values(), default=Decimal("0.00")))
 
     def carry_in_fairness(self, employee_id: int) -> float:
@@ -161,6 +168,10 @@ class GlobalAllocator:
         # decays to nothing once they reach target, so it cannot monopolise.
         if employee.id in self.spirit_only_ids and deficit > 0:
             score += WEIGHT_SPIRIT_ONLY * min(deficit, 1.0)
+
+        preferred = self.preferred_role_ids.get(employee.id)
+        if preferred is not None and preferred == slot.template.role_id:
+            score += WEIGHT_ROLE_PREFERENCE
 
         is_weekend = slot.show.date.weekday() >= 4
         if is_weekend and totals.shift_count > 0:

@@ -19,13 +19,30 @@ MINIMUM_VIABLE_GUESTS = 75
 GUEST_COUNT_PLANNING_BUFFER = 80
 DEFAULT_EXPECTED_GUESTS = GUEST_COUNT_PLANNING_BUFFER
 
-# Floor coverage ratio: one server per GUESTS_PER_SERVER guests. Because a show never
-# runs below 75 guests, MINIMUM_CONFIRMED_SERVERS is a hard floor on every show that
-# runs at all. At full house management caps confirmed servers and absorbs the rest
-# through on-call, so the ladder tops out at MAXIMUM_CONFIRMED_SERVERS.
+# Because a show never runs below MINIMUM_VIABLE_GUESTS, and one server covers 25-30
+# guests, three confirmed servers is a hard floor on every show that runs at all.
+# Coverage ratios, per management. Each role covers a block of guests, and a block
+# tolerates GUEST_RATIO_BUFFER extra before another person is added - nobody is called
+# in for the sake of five more covers. So one server covers 25-30 guests, one bartender
+# 75-80, one busser 100-105.
 GUESTS_PER_SERVER = 25
+GUESTS_PER_BARTENDER = 75
+GUESTS_PER_BUSSER = 100
+GUEST_RATIO_BUFFER = 5
+
 MINIMUM_CONFIRMED_SERVERS = 3
-MAXIMUM_CONFIRMED_SERVERS = 6
+
+
+def staff_for_guests(guests: int, guests_per_head: int) -> int:
+    """How many people a guest count needs at a given ratio, allowing the buffer.
+
+    One person per `guests_per_head`, except that a block stretches to cover
+    GUEST_RATIO_BUFFER extra guests before the next person is added. Always at least
+    one, because any show that runs needs somebody in every role.
+    """
+    if guests <= 0:
+        return 1
+    return max(1, -(-(guests - GUEST_RATIO_BUFFER) // guests_per_head))
 
 
 class AvailabilityType(models.TextChoices):
@@ -1050,6 +1067,18 @@ class EmployeeSchedulingPreference(models.Model):
         help_text="Monthly target confirmed paid hours for Spirit-only priority staff.",
     )
     priority_enabled = models.BooleanField(default=True)
+    preferred_role = models.ForeignKey(
+        "Role",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="preferring_employees",
+        help_text=(
+            "Where a cross-trained employee would rather work. Applied as a ranking "
+            "nudge only: it never makes anyone eligible or ineligible, and scarce-skill "
+            "cover still comes first."
+        ),
+    )
     effective_from = models.DateField(blank=True, null=True)
     effective_to = models.DateField(blank=True, null=True)
     notes = models.TextField(blank=True)

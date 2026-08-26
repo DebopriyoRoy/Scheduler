@@ -257,15 +257,14 @@ class FairnessService:
             m.performance_score = float(config.default_performance)
 
             # 9. Capability Level & Role Fit
+            # Capability is a small tie-break on competence, not seniority. The first
+            # server position used to score Level 5 far above Level 3 as a stand-in for
+            # a lead grade; there is no such grade - Square holds one "Service" job and
+            # the published rosters put Level 3 staff on the earliest, longest shifts.
             cap_level = capability_levels.get(emp.id, 3)
-            if template.code == "lead-server":
-                m.role_fit_score = {5: 1.00, 4: 0.80, 3: 0.60, 2: 0.40, 1: 0.20}.get(
-                    cap_level, 0.50
-                )
-            else:
-                m.role_fit_score = {5: 0.75, 4: 0.75, 3: 0.75, 2: 0.50, 1: 0.25}.get(
-                    cap_level, 0.50
-                )
+            m.role_fit_score = {5: 0.75, 4: 0.75, 3: 0.75, 2: 0.50, 1: 0.25}.get(
+                cap_level, 0.50
+            )
 
             # 10. Target Hours Adjustment
             pref = getattr(emp, "scheduling_preference", None)

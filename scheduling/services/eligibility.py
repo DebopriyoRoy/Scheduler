@@ -26,9 +26,6 @@ EXCLUDED_MANAGER_NAMES = {
 # from all of them regardless of any other role they hold.
 ALCOHOL_ADJACENT_ROLES = {"Server", "Bartender", "50/50"}
 
-MIN_LEAD_SERVER_CAPABILITY_LEVEL = 4
-
-
 @dataclass(frozen=True)
 class EligibilityResult:
     eligible: bool
@@ -71,17 +68,10 @@ class EligibilityService:
                 "for alcohol-service or server roles."
             )
 
-        # Lead Server requires a fully cross-trained employee (Level 4/5) who can run
-        # setup and service without supervision.
-        if (
-            shift_template.code == "lead-server"
-            and employee_role is not None
-            and employee_role.capability_level < MIN_LEAD_SERVER_CAPABILITY_LEVEL
-        ):
-            reasons.append(
-                f"Lead Server requires capability Level {MIN_LEAD_SERVER_CAPABILITY_LEVEL} "
-                f"or 5 (employee is Level {employee_role.capability_level})."
-            )
+        # There is deliberately no rank gate on any server position. Square carries a
+        # single "Service" job with no lead grade, and the published rosters show
+        # Level 3 staff working the earliest, longest floor shifts. The positions
+        # differ only in when they start, not in seniority.
 
         # Use the actual computed shift window (anchored to this show's own
         # doors-open/wrap-up time), not the shift template's static clock time.

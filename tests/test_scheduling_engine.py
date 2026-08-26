@@ -97,28 +97,47 @@ def test_standard_buffer_show_has_required_coverage(configured_staff):
 
 
 @pytest.mark.django_db
-def test_staffing_ladder_scales_with_guest_count(configured_staff):
-    """Servers scale one per 25 guests; bar and busser step up with the ladder."""
+def test_staffing_scales_by_the_coverage_ratios(configured_staff):
+    """One server per 25 guests, one bartender per 75, one busser per 100.
+
+    Each block stretches five guests further before another person is added - nobody
+    is called in for the sake of five more covers.
+    """
     expected = {
-        80: (3, 1, 1, 1, 1),
-        110: (4, 1, 2, 1, 1),
-        130: (5, 2, 2, 2, 2),
-        175: (6, 3, 3, 2, 2),
+        30: (1, 1, 1),   # a block covers its ratio plus the five-guest buffer
+        31: (2, 1, 1),
+        80: (3, 1, 1),   # the standing crew: buffer at the top of the 75-guest block
+        81: (4, 2, 1),
+        105: (4, 2, 1),
+        106: (5, 2, 2),
+        175: (7, 3, 2),  # full house
     }
-    for index, (guests, counts) in enumerate(expected.items()):
-        show_date = date(2026, 9, 12) + timedelta(days=index * 7)
-        show = make_show(show_date, expected_guests=guests, requires_50_50=False)
-        requirements, outside_rules = staffing_requirements_for(show)
-        assert not outside_rules, f"{guests} guests fell outside the ladder"
-        actual = {r.role_name: (r.confirmed_count, r.on_call_count) for r in requirements}
-        assert actual["Server"] == (counts[0], counts[1]), guests
-        assert actual["Bartender"] == (counts[2], counts[3]), guests
-        assert actual["Busser"][0] == counts[4], guests
-        # Every band must have enough position templates to be fillable.
+    for index, (guests, (servers, bartenders, bussers)) in enumerate(expected.items()):
+        show = make_show(
+            date(2026, 9, 12) + timedelta(days=index * 7),
+            expected_guests=guests,
+            requires_50_50=False,
+        )
+        requirements, over_capacity = staffing_requirements_for(show)
+        assert not over_capacity, f"{guests} guests wrongly flagged over capacity"
+        actual = {r.role_name: r.confirmed_count for r in requirements}
+        assert actual["Server"] == servers, f"{guests} guests"
+        assert actual["Bartender"] == bartenders, f"{guests} guests"
+        assert actual["Busser"] == bussers, f"{guests} guests"
         for requirement in requirements:
             available = len(templates_for_requirement(requirement))
             needed = requirement.confirmed_count + requirement.on_call_count
             assert available == needed, f"{guests} guests: {requirement.role_name}"
+
+
+@pytest.mark.django_db
+def test_every_role_keeps_at_least_one_person(configured_staff):
+    """A show that runs needs somebody in each role, however small the house."""
+    show = make_show(expected_guests=MINIMUM_VIABLE_GUESTS, requires_50_50=False)
+    counts = {r.role_name: r.confirmed_count for r in staffing_requirements_for(show)[0]}
+    assert counts["Server"] == 3
+    assert counts["Bartender"] == 1
+    assert counts["Busser"] == 1
 
 
 @pytest.mark.django_db
@@ -285,11 +304,13 @@ def test_office_conflict_only_applies_when_times_overlap(configured_staff):
     show = make_show(requires_50_50=False)
     make_all_available(configured_staff, show.date)
     olena = Employee.objects.get(display_name="Olena")
+    # Server 1 runs 17:45-22:45 (45 minutes before this show's 18:30 doors), so the
+    # office block has to reach past 17:45 to actually clash with it.
     OfficeAssignment.objects.create(
         employee=olena,
         date=show.date,
         start_time=time(9),
-        end_time=time(17),
+        end_time=time(18, 30),
     )
     run = SchedulingEngine().generate(show.date, show.date)
     assert not run.assignments.filter(employee=olena, shift_template__code="lead-server").exists()
@@ -338,17 +359,16 @@ def test_approved_schedule_cannot_be_regenerated(configured_staff):
 
 
 @pytest.mark.django_db
-def test_guest_count_above_the_ladder_creates_review_warning(configured_staff):
-    # 120 guests now sits inside the ladder (the 100-124 band) and needs no review.
+def test_a_guest_count_beyond_capacity_is_flagged_for_review(configured_staff):
+    """Staffing is computed from the ratios at any count, so only an impossible house
+    needs management review: more guests than the room holds."""
     inside = make_show(date(2026, 9, 12), expected_guests=120, requires_50_50=False)
     make_all_available(configured_staff, inside.date)
     run = SchedulingEngine().generate(inside.date, inside.date, allow_shortages=True)
     assert not run.warnings.filter(warning_type=WarningType.HIGH_GUEST_COUNT_REVIEW).exists()
 
-    # Above the top of the ladder, staffing falls back to the highest band and management
-    # has to sign it off.
     beyond = make_show(
-        date(2026, 9, 19), expected_guests=200, capacity=250, requires_50_50=False
+        date(2026, 9, 19), expected_guests=200, capacity=175, requires_50_50=False
     )
     make_all_available(configured_staff, beyond.date)
     run = SchedulingEngine().generate(beyond.date, beyond.date, allow_shortages=True)

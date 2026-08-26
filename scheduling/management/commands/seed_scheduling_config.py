@@ -11,7 +11,7 @@ from scheduling.models import AssignmentType, Role, ShiftTemplate, StaffingRule
 SHIFT_TEMPLATES = (
     (
         "lead-server",
-        "Lead Server",
+        "Server 1",
         "Server",
         AssignmentType.CONFIRMED,
         time(15),
@@ -64,6 +64,7 @@ SHIFT_TEMPLATES = (
     ("server-4", "Server 4", "Server", AssignmentType.CONFIRMED, time(17), time(23), 6, 0, 32),
     ("server-5", "Server 5", "Server", AssignmentType.CONFIRMED, time(17), time(23), 6, 0, 34),
     ("server-6", "Server 6", "Server", AssignmentType.CONFIRMED, time(17), time(23), 6, 0, 36),
+    ("server-7", "Server 7", "Server", AssignmentType.CONFIRMED, time(17), time(23), 6, 0, 38),
     (
         "on-call-server-2",
         "On-call Server 2",
@@ -133,19 +134,10 @@ SHIFT_TEMPLATES = (
 )
 
 
-# Staffing ladder, keyed on the show's planning guest count.
-#
-# Servers follow the one-per-25-guests floor rule: confirmed servers are
-# floor(guests / 25), clamped to [MINIMUM_CONFIRMED_SERVERS, MAXIMUM_CONFIRMED_SERVERS].
-# Because a show under 75 guests is cancelled or its guests are moved, the bottom band
-# starts at 75 and never yields fewer than three confirmed servers. The top band matches
-# the full-house crew management actually runs at Christmas: 6 confirmed servers plus 3
-# on-call, and 3 confirmed bartenders plus 2 on-call.
-#
-# Bartenders and bussers are per-show roles rather than per-guest roles: one of each
-# covers the room from 75 guests, and the count steps up as the ladder climbs.
-#
-# (min_guests, max_guests, {role: (confirmed_count, on_call_count)})
+# Retained only so an existing installation's rows can be retired. Staffing counts are
+# no longer read from bands: they are computed from the coverage ratios in
+# scheduling.services.requirements, which express the five-guest buffer that bands
+# could not without a row for every five-guest step.
 STAFFING_LADDER = (
     (75, 99, {"Server": (3, 1), "Bartender": (1, 1), "Busser": (1, 0), "50/50": (1, 0)}),
     (100, 124, {"Server": (4, 1), "Bartender": (2, 1), "Busser": (1, 0), "50/50": (1, 0)}),
