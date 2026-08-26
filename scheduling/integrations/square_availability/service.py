@@ -99,6 +99,28 @@ class SquareAvailabilitySyncService:
         self.api_provider = api_provider or APIAvailabilityProvider()
         self.browser_provider = browser_provider or PlaywrightAvailabilityProvider()
 
+    @classmethod
+    def with_live_provider(cls) -> "SquareAvailabilitySyncService":
+        """Read Square itself when a dashboard session is stored.
+
+        Chosen explicitly by the caller rather than in __init__, so that constructing
+        the service never reaches the network by surprise - which would make the test
+        suite drive a real browser against a real account.
+
+        The fixture provider is only a fallback: it contacts nothing and returns
+        windows transcribed by hand, which is how staff came to look permanently
+        unschedulable while Square held their hours all along.
+        """
+        from scheduling.integrations.square_session import session_status
+
+        if not session_status().connected:
+            return cls()
+        from scheduling.integrations.square_availability.live_provider import (
+            LiveSquareAvailabilityProvider,
+        )
+
+        return cls(browser_provider=LiveSquareAvailabilityProvider())
+
     def fetch_with_fallback(
         self, start_date: date, end_date: date
     ) -> tuple[Sequence[NormalizedAvailabilityRecord], str]:
