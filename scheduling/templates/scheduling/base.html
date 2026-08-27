@@ -1,30 +1,53 @@
 {% load static %}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Spirit Scheduling Engine{% endblock %}</title>
+  <script>
+    // Runs before first paint. Reading the stored choice after render shows the
+    // wrong theme for a frame, which on a dark preference is a white flash.
+    (function () {
+      try {
+        var saved = localStorage.getItem("spirit-theme");
+        var dark = saved ? saved === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light");
+      } catch (e) { /* private browsing: the light default stands */ }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="{% static 'scheduling/css/app.css' %}" rel="stylesheet">
 </head>
-<body class="bg-light">
-  <nav class="navbar navbar-expand-lg navbar-dark spirit-nav shadow-sm">
+<body>
+  <nav class="navbar navbar-expand-lg spirit-nav">
     <div class="container">
-      <a class="navbar-brand fw-semibold" href="{% url 'dashboard' %}">Spirit Scheduling Engine</a>
+      <a class="navbar-brand" href="{% url 'dashboard' %}">Spirit Scheduling Engine</a>
       {% if user.is_authenticated %}
-        <div class="d-flex flex-wrap align-items-center gap-3 text-white">
-          <a class="nav-link text-white" href="{% url 'show_list' %}">Show Calendar</a>
-          <a class="nav-link text-white" href="{% url 'employees' %}">Staff &amp; Availability</a>
-          <a class="nav-link text-white" href="{% url 'availability_comparison' %}">Compare</a>
-          <a class="nav-link text-white" href="{% url 'square_pull' %}">Sync</a>
-          <a class="nav-link text-white" href="{% url 'rotation_configuration' %}">Rotations</a>
-          <a class="nav-link text-white" href="{% url 'schedule_list' %}">Schedules</a>
-          <span class="small">{{ user.get_username }}</span>
-          <form method="post" action="{% url 'logout' %}">
-            {% csrf_token %}
-            <button class="btn btn-sm btn-outline-light" type="submit">Sign out</button>
-          </form>
+        <button class="navbar-toggler border-0 text-white" type="button"
+                data-bs-toggle="collapse" data-bs-target="#spirit-menu"
+                aria-controls="spirit-menu" aria-expanded="false" aria-label="Menu">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="spirit-menu">
+          <div class="d-flex flex-wrap align-items-center gap-1 ms-auto py-2 py-lg-0">
+            <a class="nav-link {% if request.resolver_match.url_name == 'show_list' %}is-current{% endif %}" href="{% url 'show_list' %}">Show Calendar</a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'employees' %}is-current{% endif %}" href="{% url 'employees' %}">Staff &amp; Availability</a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'availability_comparison' %}is-current{% endif %}" href="{% url 'availability_comparison' %}">Compare</a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'square_pull' %}is-current{% endif %}" href="{% url 'square_pull' %}">Sync</a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'rotation_configuration' %}is-current{% endif %}" href="{% url 'rotation_configuration' %}">Rotations</a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'schedule_list' %}is-current{% endif %}" href="{% url 'schedule_list' %}">Schedules</a>
+            <button class="theme-toggle ms-2" type="button" id="theme-toggle"
+                    aria-label="Switch between the light and dark theme" title="Switch theme">◐</button>
+            <span class="nav-user ms-2">{{ user.get_username }}</span>
+            <form method="post" action="{% url 'logout' %}" class="ms-1">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-light" type="submit">Sign out</button>
+            </form>
+          </div>
         </div>
       {% endif %}
     </div>
@@ -36,6 +59,19 @@
     {% endfor %}
     {% block content %}{% endblock %}
   </main>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (function () {
+      var button = document.getElementById("theme-toggle");
+      if (!button) return;
+      button.addEventListener("click", function () {
+        var root = document.documentElement;
+        var next = root.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-bs-theme", next);
+        try { localStorage.setItem("spirit-theme", next); } catch (e) { /* not fatal */ }
+      });
+    })();
+  </script>
 </body>
 </html>

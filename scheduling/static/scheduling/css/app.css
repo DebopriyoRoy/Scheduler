@@ -1,21 +1,408 @@
+/* Spirit Scheduling Engine - "House Lights"
+ *
+ * The room this serves is a 175-seat dinner theatre on Gower Street. The palette is
+ * taken from two things in its own world: the amber of a stage wash before curtain,
+ * and the saturated paintwork of the St. John's row houses a few streets over. The
+ * accents are not decoration - each one names a role, so a Bartender chip and a
+ * Bartender column read as the same colour wherever they appear.
+ *
+ * This is an operational tool before it is anything else. Managers scan a
+ * thirty-nine row availability grid and a month of shift times, so the drama lives in
+ * the chrome - nav, headers, summary tiles - and never behind a table. Tables get
+ * tabular numerals, a mono face for clock times, and the quietest surface on the page.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+/* ---------------------------------------------------------------- tokens */
+
 :root {
-  --spirit-navy: #173b63;
-  --spirit-blue: #2f78b8;
+  /* Stage */
+  --ink:        #150F1E;
+  --velvet:     #241A33;
+  --velvet-2:   #2E2240;
+
+  /* Jellybean Row. Each one carries a meaning below; none is used at random. */
+  --spot:       #FFB03A;   /* stage amber - primary, and the 50/50 role */
+  --coral:      #FF6A5A;   /* alarm, shortage */
+  --teal:       #22CBA8;   /* Server, and "connected" */
+  --orchid:     #B769E8;   /* Bartender */
+  --harbour:    #48A9F8;   /* Busser */
+
+  /* Neutrals, biased a few degrees toward the aubergine so they read as chosen
+     rather than inherited from a framework. */
+  --paper:      #FBF8FC;
+  --surface:    #FFFFFF;
+  --surface-2:  #F4EFF7;
+  --line:       #E4DAEC;
+  --text:       #241B30;
+  --text-soft:  #6A5C7B;
+
+  --radius:     14px;
+  --radius-sm:  9px;
+  --shadow:     0 1px 2px rgba(21, 15, 30, .05), 0 8px 24px -12px rgba(21, 15, 30, .18);
+  --shadow-lg:  0 2px 4px rgba(21, 15, 30, .06), 0 20px 44px -20px rgba(21, 15, 30, .34);
+
+  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --font-ui: 'Manrope', ui-sans-serif, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: light;
 }
 
-.spirit-nav { background: var(--spirit-navy); }
-.dashboard-card { border: 0; color: inherit; box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .08); transition: transform .15s ease, box-shadow .15s ease; }
-.dashboard-card:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .12); }
-.status-dot { display: inline-block; width: .65rem; height: .65rem; margin-right: .5rem; border-radius: 50%; background: #6c757d; }
-.status-connected { background: #198754; }
+:root[data-bs-theme="dark"] {
+  --paper:      #120D1A;
+  --surface:    #1C1428;
+  --surface-2:  #241A33;
+  --line:       #33264A;
+  --text:       #F2EAF8;
+  --text-soft:  #A897BC;
+  --shadow:     0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px -14px rgba(0, 0, 0, .8);
+  --shadow-lg:  0 2px 6px rgba(0, 0, 0, .55), 0 26px 56px -22px rgba(0, 0, 0, .9);
+  color-scheme: dark;
+}
+
+/* Bootstrap reads its own variables, so the theme is handed to it rather than
+   fought with selector-by-selector. */
+:root {
+  --bs-body-bg: var(--paper);
+  --bs-body-color: var(--text);
+  --bs-body-font-family: var(--font-ui);
+  --bs-border-color: var(--line);
+  --bs-border-radius: var(--radius-sm);
+  --bs-primary: #7B3FA8;
+  --bs-primary-rgb: 123, 63, 168;
+  --bs-link-color: #7B3FA8;
+  --bs-link-hover-color: #5E2C84;
+  --bs-secondary-color: var(--text-soft);
+  --bs-emphasis-color: var(--text);
+  --bs-tertiary-bg: var(--surface-2);
+}
+
+:root[data-bs-theme="dark"] {
+  --bs-primary: #C88BEE;
+  --bs-primary-rgb: 200, 139, 238;
+  --bs-link-color: #D3A6F2;
+  --bs-link-hover-color: #E6CCF8;
+}
+
+/* ------------------------------------------------------------ foundation */
+
+body {
+  background:
+    radial-gradient(1100px 460px at 8% -8%, rgba(183, 105, 232, .10), transparent 60%),
+    radial-gradient(900px 420px at 96% -4%, rgba(255, 176, 58, .12), transparent 62%),
+    var(--paper);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-feature-settings: 'ss01', 'cv01';
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .h1, .h2, .h3 {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -.015em;
+  text-wrap: balance;
+  color: var(--text);
+}
+
+h1, .h1 { font-weight: 600; }
+h2, .h2, h3, .h3 { font-weight: 600; }
+
+.text-uppercase.small,
+.text-uppercase.fw-semibold {
+  letter-spacing: .11em;
+  font-size: .7rem;
+}
+
+/* Every column of digits in this application lines up: times, hours, guest counts. */
+table, .tabular, .font-monospace { font-variant-numeric: tabular-nums; }
+
+code, .font-monospace { font-family: var(--font-mono); }
+
+a { text-underline-offset: .18em; }
+
+/* ------------------------------------------------------------------- nav */
+
+.spirit-nav {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  background: linear-gradient(112deg, var(--ink) 0%, #2A1B3D 46%, #1B1329 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  box-shadow: 0 10px 34px -18px rgba(21, 15, 30, .9);
+}
+
+/* The stage wash: a slow drift of house colours along the top edge. It is the one
+   piece of pure ornament here, and it sits above everything rather than behind
+   anything anyone has to read. */
+.spirit-nav::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg,
+    var(--spot), var(--coral), var(--orchid), var(--harbour), var(--teal), var(--spot));
+  background-size: 300% 100%;
+  animation: stage-wash 18s linear infinite;
+}
+
+@keyframes stage-wash {
+  from { background-position:   0% 50%; }
+  to   { background-position: 300% 50%; }
+}
+
+.navbar-brand {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.02em;
+  color: #fff !important;
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+}
+
+/* A lit bulb, the way a marquee has one. */
+.navbar-brand::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--spot);
+  box-shadow: 0 0 0 3px rgba(255, 176, 58, .18), 0 0 16px 2px rgba(255, 176, 58, .75);
+  animation: bulb 3.6s ease-in-out infinite;
+}
+
+@keyframes bulb {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .62; }
+}
+
+.spirit-nav .nav-link {
+  color: rgba(255, 255, 255, .74) !important;
+  font-weight: 500;
+  font-size: .93rem;
+  padding: .34rem .6rem;
+  border-radius: 999px;
+  position: relative;
+  transition: color .18s ease, background-color .18s ease;
+}
+
+.spirit-nav .nav-link:hover,
+.spirit-nav .nav-link:focus-visible {
+  color: #fff !important;
+  background: rgba(255, 255, 255, .10);
+}
+
+.spirit-nav .nav-link.is-current {
+  color: var(--ink) !important;
+  background: var(--spot);
+  font-weight: 600;
+}
+
+.spirit-nav .btn-outline-light {
+  border-color: rgba(255, 255, 255, .34);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.spirit-nav .btn-outline-light:hover { background: #fff; color: var(--ink); }
+
+.nav-user {
+  font-size: .8rem;
+  color: rgba(255, 255, 255, .6);
+  letter-spacing: .04em;
+}
+
+.theme-toggle {
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: transparent;
+  color: rgba(255, 255, 255, .85);
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  line-height: 1;
+  font-size: .95rem;
+  transition: background-color .18s ease, transform .18s ease;
+}
+
+.theme-toggle:hover { background: rgba(255, 255, 255, .13); transform: rotate(-12deg); }
+
+/* ----------------------------------------------------------------- cards */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.card .card-body { padding: 1.15rem 1.3rem; }
+
+.dashboard-card {
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: transform .2s cubic-bezier(.2, .7, .3, 1), box-shadow .2s ease;
+}
+
+.dashboard-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+
+.table-light, .table > thead {
+  --bs-table-bg: var(--surface-2);
+  --bs-table-color: var(--text-soft);
+}
+
+.table > thead th {
+  font-size: .72rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-soft);
+  border-bottom: 1px solid var(--line);
+  padding-top: .8rem;
+  padding-bottom: .8rem;
+}
+
+.table > tbody > tr { transition: background-color .14s ease; }
+.table > tbody td { border-color: var(--line); }
+
+/* Clock times are read down a column, not along a sentence. */
+.table td.text-nowrap, td .assignment-time, .clock { font-family: var(--font-mono); font-size: .82rem; }
+
+/* -------------------------------------------------------- role encoding */
+
+.badge.text-bg-light {
+  background: var(--surface-2) !important;
+  color: var(--text-soft) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  padding: .34em .7em;
+}
+
+/* One hue per role, applied wherever that role is named. */
+.role-server    { --role: var(--teal); }
+.role-bartender { --role: var(--orchid); }
+.role-busser    { --role: var(--harbour); }
+.role-5050      { --role: var(--spot); }
+
+.badge.role-server, .badge.role-bartender, .badge.role-busser, .badge.role-5050 {
+  background: color-mix(in srgb, var(--role) 15%, transparent) !important;
+  color: color-mix(in srgb, var(--role) 72%, var(--text)) !important;
+  border: 1px solid color-mix(in srgb, var(--role) 38%, transparent) !important;
+}
+
+/* --------------------------------------------------------------- status */
+
+.status-dot {
+  display: inline-block;
+  width: .6rem;
+  height: .6rem;
+  margin-right: .5rem;
+  border-radius: 50%;
+  background: #9C8DAE;
+  box-shadow: 0 0 0 3px rgba(156, 141, 174, .18);
+}
+
+.status-connected {
+  background: var(--teal);
+  box-shadow: 0 0 0 3px rgba(34, 203, 168, .2);
+  animation: breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(34, 203, 168, .2); }
+  50%      { box-shadow: 0 0 0 6px rgba(34, 203, 168, .06); }
+}
+
+/* --------------------------------------------------------- assignments */
+
 .table-schedule { font-size: .84rem; min-width: 1450px; }
-.assignment-card { min-width: 8rem; }
-.assignment-confirmed { border-left: .3rem solid #198754; }
-.assignment-on-call { border-left: .3rem solid #f0ad4e; }
-.assignment-override { border-left: .3rem double #6f42c1; }
-.assignment-shortage { border-left: .3rem solid #dc3545; }
-.priority-row > * { background: #fff8dc !important; }
-.form-help { color: #6c757d; font-size: .875rem; }
+.assignment-card { min-width: 8rem; border-radius: var(--radius-sm); }
+.assignment-confirmed { border-left: .28rem solid var(--teal); }
+.assignment-on-call   { border-left: .28rem solid var(--spot); }
+.assignment-override  { border-left: .28rem double var(--orchid); }
+.assignment-shortage  { border-left: .28rem solid var(--coral); }
+
+.priority-row > * { background: color-mix(in srgb, var(--spot) 12%, var(--surface)) !important; }
+
+/* ------------------------------------------------------- alerts & forms */
+
+.alert {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  border-left: .3rem solid var(--text-soft);
+}
+
+.alert-success { border-left-color: var(--teal); }
+.alert-warning { border-left-color: var(--spot); }
+.alert-danger  { border-left-color: var(--coral); }
+.alert-info    { border-left-color: var(--harbour); }
+
+.btn { border-radius: 999px; font-weight: 600; letter-spacing: .005em; }
+.btn-sm { padding-inline: .95rem; }
+
+.btn-primary {
+  background: linear-gradient(135deg, #8B4BBD, #6C31A0);
+  border: 0;
+  box-shadow: 0 6px 18px -8px rgba(108, 49, 160, .8);
+}
+
+.btn-primary:hover { background: linear-gradient(135deg, #9A5BCB, #7A3BB0); }
+
+.btn-warning {
+  background: linear-gradient(135deg, var(--spot), #F2921E);
+  border: 0;
+  color: var(--ink);
+}
+
+.form-help { color: var(--text-soft); font-size: .875rem; }
 form p label { display: block; margin-bottom: .25rem; font-weight: 600; }
-form p input:not([type=checkbox]), form p select, form p textarea { width: 100%; padding: .375rem .75rem; border: 1px solid #ced4da; border-radius: .375rem; }
-.errorlist { color: #b02a37; margin-bottom: .5rem; }
+
+form p input:not([type=checkbox]), form p select, form p textarea,
+.form-control, .form-select {
+  width: 100%;
+  padding: .45rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: color-mix(in srgb, var(--orchid) 60%, transparent);
+  box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--orchid) 18%, transparent);
+}
+
+.errorlist { color: var(--coral); margin-bottom: .5rem; list-style: none; padding-left: 0; }
+
+::selection { background: color-mix(in srgb, var(--spot) 40%, transparent); }
+
+:focus-visible { outline: 2px solid var(--orchid); outline-offset: 2px; }
+
+/* --------------------------------------------------------- page opening */
+
+/* One short curtain-up on load. Deliberately not per-row: a table of forty staff
+   that animates itself in is a table nobody can read for half a second. */
+main > * { animation: rise .42s cubic-bezier(.2, .7, .3, 1) both; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
