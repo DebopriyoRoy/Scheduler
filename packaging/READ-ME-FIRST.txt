@@ -32,9 +32,11 @@ Open Applications and double-click Spirit Scheduler.
 Your browser opens automatically at the dashboard.
 
     Username:  manager
-    Password:  spirit
+    Password:  ask whoever gave you this disk image
 
-Change the password after signing in.
+The password is deliberately not printed here. This image carries the real
+staff roster, time-off reasons and schedule history, so writing the password
+next to it would hand all of that to anyone who picks the image up.
 
 The first launch takes about a minute: it prepares the database and
 downloads the browser engine used to read the show calendar. Later
@@ -58,4 +60,9 @@ IF SOMETHING GOES WRONG
 Read app.log in the folder above - it records every startup and every
 error. Send it on and the problem can be identified from it.
 
-Nothing on this disk image contains passwords or access tokens.
+TREAT THIS DISK IMAGE AS CONFIDENTIAL
+-------------------------------------
+It carries no Square access token. It does carry the real staff roster,
+approved time off and the reasons given for it, the schedule history, and
+the stored login credentials for this application. Hand it to the person it
+is meant for; do not email it or leave it on a shared drive.
