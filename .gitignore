@@ -26,3 +26,7 @@ Spirit_Schedule_Comparison_Report.pdf
 # Build output for the packaged Mac app
 dist/
 build/
+
+# Staging output from desktop/build_app.sh runs that build beside a running app.
+dist-staging/
+build-staging/
