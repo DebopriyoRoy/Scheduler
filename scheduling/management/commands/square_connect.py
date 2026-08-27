@@ -37,9 +37,31 @@ class Command(BaseCommand):
             default="",
             help="Availability page to open. Defaults to the stored or built-in URL.",
         )
+        parser.add_argument(
+            "--json",
+            action="store_true",
+            help="Sign in only, then emit one machine-readable line for the application.",
+        )
 
     def handle(self, *args, **options):
         status = session_status()
+
+        # The application drives this through a button, and it wants one thing: a
+        # session. The endpoint probe below is a developer's tool - it reopens the
+        # dashboard, waits, and writes several megabytes of captured traffic - so it
+        # is skipped here rather than made to run on every reconnect.
+        if options["json"]:
+            import json as json_module
+
+            from scheduling.services.square_pull import CONNECT_MARKER
+
+            try:
+                status = open_dashboard_for_login()
+                payload = {"connected": status.connected, "detail": status.detail}
+            except SquareSessionError as exc:
+                payload = {"connected": False, "error": str(exc)}
+            self.stdout.write(CONNECT_MARKER + json_module.dumps(payload))
+            return
 
         if not options["probe_only"]:
             if status.connected:

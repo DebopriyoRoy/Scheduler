@@ -144,25 +144,35 @@ def test_hand_entered_hours_outrank_every_sync(client, manager, jackie):
 
 
 def test_page_offers_a_sync_button(client, manager, jackie):
+    """With a live session the page offers the read, not the sign-in."""
+    from scheduling.integrations import square_session
+
+    square_session.record_session("Test Account", square_session.DEFAULT_AVAILABILITY_URL)
+
     client.force_login(manager)
     html = client.get(reverse("employees")).content.decode()
     assert "Sync availability from Square" in html
+    assert "Connect to Square" not in html
 
 
 def test_sync_button_reports_a_failure_instead_of_erroring(client, manager, jackie, monkeypatch):
     """A failed read has to say so on the page. Raising here would show a 500 and
-    leave the reason in a log file nobody opens."""
+    leave the reason in a log file nobody opens.
+
+    Uses a failure that is *not* an expired sign-in: expiry has its own message and
+    its own remedy, and is covered separately below.
+    """
     from scheduling.services import square_pull
 
     def explode(start, end):
-        raise square_pull.SquarePullError("the stored session has expired.")
+        raise square_pull.SquarePullError("Square took too long to respond.")
 
     monkeypatch.setattr(square_pull, "run_availability_sync", explode)
 
     client.force_login(manager)
     response = client.post(reverse("employees"), follow=True)
     assert response.status_code == 200
-    assert "the stored session has expired." in response.content.decode()
+    assert "Square took too long to respond." in response.content.decode()
 
 
 def test_sync_button_says_when_the_answer_is_not_squares(client, manager, jackie, monkeypatch):
@@ -180,3 +190,97 @@ def test_sync_button_says_when_the_answer_is_not_squares(client, manager, jackie
     client.force_login(manager)
     response = client.post(reverse("employees"), follow=True)
     assert "built-in fallback" in response.content.decode()
+
+
+def test_expired_session_offers_connect_not_sync(client, manager, jackie, monkeypatch):
+    """An expired sign-in must not present a button that cannot work.
+
+    The page used to show a green dot and "connected" purely because a marker file
+    existed, so a dead session looked healthy right up until a sync failed.
+    """
+    from scheduling.integrations import square_session
+
+    monkeypatch.setattr(
+        square_session,
+        "session_status",
+        lambda: square_session.SessionStatus(
+            False, "Sign-in expired on 26 Aug 2026. Connect to Square again.", expired=True
+        ),
+    )
+
+    client.force_login(manager)
+    html = client.get(reverse("employees")).content.decode()
+
+    assert "Connect to Square" in html
+    assert "Sync availability from Square" not in html
+    assert "Square signed this application out." in html
+
+
+def test_connect_button_reports_success(client, manager, jackie, monkeypatch):
+    from scheduling.integrations import square_session
+    from scheduling.services import square_pull
+
+    monkeypatch.setattr(
+        square_session,
+        "session_status",
+        lambda: square_session.SessionStatus(False, "Not connected.", expired=True),
+    )
+    monkeypatch.setattr(
+        square_pull,
+        "run_square_connect",
+        lambda: {"connected": True, "detail": "Connected as Spirit of Newfoundland."},
+    )
+
+    client.force_login(manager)
+    response = client.post(reverse("employees"), {"action": "connect"}, follow=True)
+    assert "Connected as Spirit of Newfoundland." in response.content.decode()
+
+
+def test_connect_failure_is_shown_not_raised(client, manager, jackie, monkeypatch):
+    from scheduling.integrations import square_session
+    from scheduling.services import square_pull
+
+    monkeypatch.setattr(
+        square_session,
+        "session_status",
+        lambda: square_session.SessionStatus(False, "Not connected.", expired=True),
+    )
+
+    def explode():
+        raise square_pull.SquarePullError("the sign-in was not finished in time.")
+
+    monkeypatch.setattr(square_pull, "run_square_connect", explode)
+
+    client.force_login(manager)
+    response = client.post(reverse("employees"), {"action": "connect"}, follow=True)
+    assert response.status_code == 200
+    assert "the sign-in was not finished in time." in response.content.decode()
+
+
+def test_expired_sync_records_the_expiry(client, manager, jackie, monkeypatch, tmp_path):
+    """A sync bounced to the login page must leave the session marked expired.
+
+    Otherwise the page keeps claiming a live connection and the only way to discover
+    otherwise is to run another sync and watch it fail the same way.
+    """
+    monkeypatch.setenv("SPIRIT_SQUARE_SESSION_DIR", str(tmp_path))
+    from scheduling.integrations import square_session
+    from scheduling.services import square_pull
+
+    square_session.record_session("Test Account", square_session.DEFAULT_AVAILABILITY_URL)
+    assert square_session.session_status().connected is True
+
+    def expired(start, end):
+        raise square_pull.SquarePullError(
+            "Square asked for a sign-in, so the stored session has expired."
+        )
+
+    monkeypatch.setattr(square_pull, "run_availability_sync", expired)
+
+    client.force_login(manager)
+    response = client.post(reverse("employees"), follow=True)
+
+    assert "Square signed this application out" in response.content.decode()
+    status = square_session.session_status()
+    assert status.connected is False
+    assert status.expired is True

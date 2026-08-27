@@ -144,3 +144,53 @@ def pull_everything(start: dt.date, end: dt.date) -> PullReport:
         report.add("Staff availability", False, str(exc))
 
     return report
+
+
+CONNECT_MARKER = "SPIRIT_CONNECT_RESULT:"
+# Ten minutes: the person has to find the window, sign in, and clear two-factor.
+CONNECT_TIMEOUT = 660
+
+
+def _connect_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--connect-square"]
+    manage_py = Path(__file__).resolve().parents[2] / "manage.py"
+    return [sys.executable, str(manage_py), "square_connect", "--json"]
+
+
+def run_square_connect() -> dict:
+    """Open a real browser at Square's login and wait for the sign-in to finish.
+
+    Out-of-process for the same reason every other browser task is: Playwright drives
+    browsers through asyncio subprocesses, which on Unix need a process's main thread,
+    and a Django request never has one.
+
+    The password is typed into Square's own page in a window this application only
+    watches. Nothing here sees it, and only the session Square issues is kept.
+    """
+    try:
+        completed = subprocess.run(
+            _connect_command(),
+            capture_output=True,
+            text=True,
+            timeout=CONNECT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SquarePullError(
+            "the sign-in was not finished in time. Press Connect to Square and "
+            "complete the sign-in in the window that opens."
+        ) from exc
+    except OSError as exc:
+        raise SquarePullError(f"the sign-in window could not be opened ({exc}).") from exc
+
+    payload = None
+    for line in (completed.stdout or "").splitlines():
+        if line.startswith(CONNECT_MARKER):
+            payload = json.loads(line[len(CONNECT_MARKER) :])
+
+    if payload is None:
+        detail = (completed.stderr or completed.stdout or "").strip().splitlines()
+        raise SquarePullError(detail[-1] if detail else f"exit code {completed.returncode}")
+    if payload.get("error"):
+        raise SquarePullError(payload["error"])
+    return payload

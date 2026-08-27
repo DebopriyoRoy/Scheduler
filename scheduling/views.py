@@ -145,6 +145,8 @@ def employees(request):
     where a wrong window is noticed and it should be the page where it is fixed.
     """
     if request.method == "POST":
+        if request.POST.get("action") == "connect":
+            return _connect_to_square(request)
         return _sync_availability_from_square(request)
 
     WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -267,6 +269,7 @@ def employees(request):
             "weekdays": WEEKDAYS,
             "no_availability": [r["employee"].display_name for r in rows if not r["days_known"]],
             "session_connected": session.connected,
+            "session_expired": session.expired,
             "session_detail": session.detail,
             "last_sync": last_sync,
             # Says out loud when the hours on screen are a stand-in rather than
@@ -276,6 +279,30 @@ def employees(request):
             "sync_days": AVAILABILITY_SYNC_DAYS,
         },
     )
+
+
+def _connect_to_square(request):
+    """Sign in to Square from inside the application.
+
+    This used to be a Terminal command, which meant the one thing that goes wrong on
+    its own schedule - Square expiring the session - could only be fixed by leaving
+    the application. The window that opens is Square's own login page; the password
+    is typed there and never passes through this application.
+    """
+    from scheduling.services.square_pull import SquarePullError, run_square_connect
+
+    try:
+        result = run_square_connect()
+    except SquarePullError as exc:
+        messages.error(request, f"Could not sign in to Square: {exc}")
+        return redirect("employees")
+
+    messages.success(
+        request,
+        f"Connected to Square. {result.get('detail', '')} "
+        "Press Sync availability from Square to read the current hours.",
+    )
+    return redirect("employees")
 
 
 def _sync_availability_from_square(request):
@@ -293,7 +320,20 @@ def _sync_availability_from_square(request):
     try:
         result = run_availability_sync(start, end)
     except SquarePullError as exc:
-        messages.error(request, f"Could not read availability from Square: {exc}")
+        # An expired sign-in is the one failure with a specific remedy, so record it
+        # rather than leaving the page claiming a live connection until the next
+        # attempt fails the same way.
+        if "expired" in str(exc).lower() or "sign-in" in str(exc).lower():
+            from scheduling.integrations.square_session import mark_session_expired
+
+            mark_session_expired()
+            messages.error(
+                request,
+                "Square signed this application out. Press Connect to Square, sign in "
+                "in the window that opens, then sync again.",
+            )
+        else:
+            messages.error(request, f"Could not read availability from Square: {exc}")
         return redirect("employees")
 
     if not result.get("live"):
@@ -1556,6 +1596,7 @@ def square_pull(request):
             "start": start.isoformat(),
             "end": end.isoformat(),
             "session_connected": session.connected,
+            "session_expired": session.expired,
             "session_detail": session.detail,
             "show_count": Show.objects.filter(active=True, date__range=(start, end)).count(),
             "comparable_runs": runs,

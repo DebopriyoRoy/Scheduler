@@ -311,8 +311,31 @@ def run_availability_sync_mode(start: str, end: str) -> int:
     return 0
 
 
+def run_connect_square_mode() -> int:
+    """Sign-in mode: open Square's login in a real window and store the session.
+
+    Headed, unlike the sync modes, because a person has to type into it. This process
+    only waits for the dashboard to load; the password goes to Square's own page and
+    is never seen here.
+    """
+    prepare_data_dir()
+    ensure_browser_engine()
+    configure_django(0)
+
+    import django
+
+    django.setup()
+
+    from django.core.management import call_command
+
+    call_command("square_connect", json=True)
+    return 0
+
+
 def main() -> int:
     start_logging()
+    if len(sys.argv) >= 2 and sys.argv[1] == "--connect-square":
+        return run_connect_square_mode()
     if len(sys.argv) >= 4 and sys.argv[1] == "--sync-calendar":
         return run_calendar_sync(sys.argv[2], sys.argv[3])
     if len(sys.argv) >= 4 and sys.argv[1] == "--sync-availability":

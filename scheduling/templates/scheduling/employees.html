@@ -11,16 +11,28 @@
     </p>
   </div>
   <div class="text-end small">
-    <form method="post" class="d-inline" id="sync-form">{% csrf_token %}
-      <button class="btn btn-sm btn-primary" type="submit" id="sync-button"
-              {% if not session_connected %}disabled title="Connect the Square dashboard first"{% endif %}>
-        <span id="sync-idle">Sync availability from Square</span>
-        <span id="sync-busy" class="d-none">
-          <span class="spinner-border spinner-border-sm align-[-0.125em]" role="status" aria-hidden="true"></span>
-          Reading Square&hellip;
-        </span>
-      </button>
-    </form>
+    {% if session_connected %}
+      <form method="post" class="d-inline" id="sync-form">{% csrf_token %}
+        <button class="btn btn-sm btn-primary" type="submit" id="sync-button">
+          <span id="sync-idle">Sync availability from Square</span>
+          <span id="sync-busy" class="d-none">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Reading Square&hellip;
+          </span>
+        </button>
+      </form>
+    {% else %}
+      <form method="post" class="d-inline" id="connect-form">{% csrf_token %}
+        <input type="hidden" name="action" value="connect">
+        <button class="btn btn-sm btn-warning" type="submit" id="connect-button">
+          <span id="connect-idle">Connect to Square</span>
+          <span id="connect-busy" class="d-none">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Waiting for sign-in&hellip;
+          </span>
+        </button>
+      </form>
+    {% endif %}
     <a class="btn btn-sm btn-outline-primary" href="{% url 'availability' %}">Edit availability</a>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'availability_comparison' %}">Compare with Square</a>
   </div>
@@ -37,11 +49,16 @@
 
 {% if not session_connected %}
   <div class="alert alert-warning">
-    <strong>Availability cannot be read from Square yet.</strong>
+    <strong>{% if session_expired %}Square signed this application out.{% else %}Availability cannot be read from Square yet.{% endif %}</strong>
     Square publishes no interface for staff availability, so it has to be read from the
-    dashboard, which needs a sign-in. In Terminal, run <code>manage.py square_connect</code>
-    once &mdash; a browser opens and you sign in to Square directly, and your password is
-    never seen by this application.
+    dashboard, and that needs a sign-in of its own &mdash; being signed in to Square in
+    your usual browser does not carry over.
+    <div class="mt-2">
+      Press <strong>Connect to Square</strong>. A browser window opens on Square&rsquo;s
+      own login page; sign in there, including any two-factor step, and leave it alone
+      once the dashboard appears. Your password is typed into Square and is never seen
+      by this application.
+    </div>
   </div>
 {% elif using_fallback %}
   <div class="alert alert-danger">
@@ -118,14 +135,17 @@
   // The read drives a real browser against Square and takes up to a minute. Without
   // this the button looks dead and gets pressed again, starting a second browser.
   (function () {
-    var form = document.getElementById("sync-form");
-    if (!form) return;
-    form.addEventListener("submit", function () {
-      var button = document.getElementById("sync-button");
-      button.disabled = true;
-      document.getElementById("sync-idle").classList.add("d-none");
-      document.getElementById("sync-busy").classList.remove("d-none");
-    });
+    function busyOnSubmit(formId, buttonId, idleId, busyId) {
+      var form = document.getElementById(formId);
+      if (!form) return;
+      form.addEventListener("submit", function () {
+        document.getElementById(buttonId).disabled = true;
+        document.getElementById(idleId).classList.add("d-none");
+        document.getElementById(busyId).classList.remove("d-none");
+      });
+    }
+    busyOnSubmit("sync-form", "sync-button", "sync-idle", "sync-busy");
+    busyOnSubmit("connect-form", "connect-button", "connect-idle", "connect-busy");
   })();
 </script>
 {% endblock %}

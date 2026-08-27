@@ -43,6 +43,10 @@ class SessionStatus:
     connected: bool
     detail: str
     availability_url: str = DEFAULT_AVAILABILITY_URL
+    # Square expired the sign-in. Distinct from never having connected: the account
+    # and the discovered availability URL are still known, and the remedy is one
+    # sign-in rather than a first-time setup.
+    expired: bool = False
 
 
 def _marker_path() -> Path:
@@ -62,12 +66,43 @@ def session_status() -> SessionStatus:
         saved = json.loads(marker.read_text())
     except (OSError, ValueError):
         return SessionStatus(False, "The saved session could not be read. Sign in again.")
+    url = saved.get("availability_url", DEFAULT_AVAILABILITY_URL)
+    if saved.get("expired_at"):
+        # Reported as not connected on purpose. The page used to show a green dot and
+        # "connected" from the mere presence of this file, so an expired sign-in still
+        # looked healthy right up until a sync failed.
+        return SessionStatus(
+            False,
+            f"Sign-in expired on {saved['expired_at']}. Connect to Square again.",
+            url,
+            expired=True,
+        )
     return SessionStatus(
         True,
         f"Connected as {saved.get('account', 'your Square account')} "
         f"on {saved.get('connected_at', 'an earlier date')}.",
-        saved.get("availability_url", DEFAULT_AVAILABILITY_URL),
+        url,
     )
+
+
+def mark_session_expired() -> None:
+    """Record that Square rejected the stored session, keeping what is still true.
+
+    Called when a sync is bounced to the login page. Without this the marker file
+    keeps asserting a live connection, and the only way to learn otherwise is to run
+    a sync and watch it fail.
+    """
+    marker = _marker_path()
+    if not marker.exists():
+        return
+    from django.utils import timezone
+
+    try:
+        saved = json.loads(marker.read_text())
+    except (OSError, ValueError):
+        return
+    saved["expired_at"] = timezone.localtime().strftime("%d %b %Y")
+    marker.write_text(json.dumps(saved))
 
 
 def record_session(account: str, availability_url: str) -> None:
@@ -81,6 +116,7 @@ def record_session(account: str, availability_url: str) -> None:
                 "account": account,
                 "availability_url": availability_url,
                 "connected_at": timezone.localtime().strftime("%d %b %Y"),
+                # A fresh sign-in clears any previous expiry.
             }
         )
     )
