@@ -15,6 +15,10 @@ urlpatterns = [
     path("shows/calendar-sync/", views.calendar_sync, name="calendar_sync"),
     path("square/pull/", views.square_pull, name="square_pull"),
     path("availability/", views.availability, name="availability"),
+    path("time-off/sync/", views.time_off_sync, name="time_off_sync"),
+    path("time-off/add/", views.time_off_add, name="time_off_add"),
+    path("time-off/<int:entry_id>/approve/", views.time_off_approve, name="time_off_approve"),
+    path("time-off/<int:entry_id>/delete/", views.time_off_delete, name="time_off_delete"),
     path(
         "availability/square-sync/",
         views.square_availability_sync,
@@ -37,6 +41,17 @@ urlpatterns = [
         name="schedule_square_compare",
     ),
     path("schedules/<int:run_id>/new-draft/", views.schedule_new_draft, name="schedule_new_draft"),
+    path("schedules/<int:run_id>/delete/", views.schedule_delete, name="schedule_delete"),
+    path(
+        "schedules/<int:run_id>/shows/<int:show_id>/fill/<str:code>/",
+        views.schedule_fill,
+        name="schedule_fill",
+    ),
+    path(
+        "schedules/<int:run_id>/square-remove/",
+        views.schedule_square_remove,
+        name="schedule_square_remove",
+    ),
     path(
         "schedules/<int:run_id>/export.xlsx",
         views.schedule_export_excel,

@@ -20,7 +20,7 @@ def test_authenticated_user_can_open_dashboard(client):
     client.force_login(user)
     response = client.get(reverse("dashboard"))
     assert response.status_code == 200
-    assert b"Spirit Scheduling Engine" in response.content
+    assert b"Spirit Scheduling Agent" in response.content
 
 
 @pytest.mark.django_db
@@ -154,3 +154,147 @@ def test_hand_entered_availability_outranks_a_square_unknown(client, manager):
 
     client.force_login(manager)
     assert _week(client.get(reverse("employees")).content.decode(), "Svitlana")[0] == "17:00-23:00"
+
+
+def _run(status, days_ahead=30, **extra):
+    from datetime import date, timedelta
+
+    from scheduling.models import ScheduleRun
+
+    start = date.today() + timedelta(days=days_ahead)
+    return ScheduleRun.objects.create(
+        start_date=start, end_date=start + timedelta(days=7), status=status, **extra
+    )
+
+
+@pytest.mark.django_db
+def test_delete_removes_an_in_progress_run_and_everything_hanging_off_it(client, manager):
+    from scheduling.models import (
+        ScheduleRun,
+        ScheduleRunStatus,
+        SchedulingWarning,
+        WarningSeverity,
+        WarningType,
+    )
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    SchedulingWarning.objects.create(
+        schedule_run=run,
+        warning_type=WarningType.SERVER_SHORTAGE,
+        severity=WarningSeverity.ERROR,
+        message="short by one",
+    )
+    response = client.post(reverse("schedule_delete", args=[run.pk]), follow=True)
+
+    assert response.status_code == 200
+    assert not ScheduleRun.objects.filter(pk=run.pk).exists()
+    assert not SchedulingWarning.objects.filter(schedule_run_id=run.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_ignores_a_get_so_a_stray_link_cannot_destroy_a_run(client, manager):
+    from scheduling.models import ScheduleRun, ScheduleRunStatus
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    response = client.get(reverse("schedule_delete", args=[run.pk]))
+
+    assert response.status_code == 302
+    assert ScheduleRun.objects.filter(pk=run.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_refuses_a_run_already_sent_to_square(client, manager):
+    from scheduling.models import ScheduleRun, ScheduleRunStatus
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.SYNCED_TO_SQUARE)
+    client.post(reverse("schedule_delete", args=[run.pk]), follow=True)
+
+    assert ScheduleRun.objects.filter(pk=run.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_refuses_a_run_that_created_shifts_in_square(client, manager):
+    from scheduling.models import (
+        ScheduleRun,
+        ScheduleRunStatus,
+        SquareSyncAuditAction,
+        SquareSyncAuditLog,
+    )
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    SquareSyncAuditLog.objects.create(
+        schedule_run=run, action_type=SquareSyncAuditAction.PRODUCTION_DRAFT_CREATED
+    )
+    client.post(reverse("schedule_delete", args=[run.pk]), follow=True)
+
+    assert ScheduleRun.objects.filter(pk=run.pk).exists()
+
+
+@pytest.mark.django_db
+def test_a_previewed_run_is_still_deletable(client, manager):
+    """A preview writes an audit row but creates nothing in Square."""
+    from scheduling.models import (
+        ScheduleRun,
+        ScheduleRunStatus,
+        SquareSyncAuditAction,
+        SquareSyncAuditLog,
+    )
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    SquareSyncAuditLog.objects.create(
+        schedule_run=run, action_type=SquareSyncAuditAction.PRODUCTION_SYNC_PREVIEWED
+    )
+    client.post(reverse("schedule_delete", args=[run.pk]), follow=True)
+
+    assert not ScheduleRun.objects.filter(pk=run.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_button_appears_only_for_in_progress_runs(client, manager):
+    from scheduling.models import ScheduleRunStatus
+
+    client.force_login(manager)
+    _run(ScheduleRunStatus.NEEDS_REVIEW)
+    _run(ScheduleRunStatus.SYNCED_TO_SQUARE)
+    body = client.get(reverse("schedule_list")).content.decode()
+
+    assert body.count("btn-outline-danger") == 1
+
+
+@pytest.mark.django_db
+def test_deleting_the_same_run_twice_says_so_instead_of_raising_404(client, manager):
+    """The browser replays this POST on a back-navigation or reload.
+
+    Reproduces the live failure: the first delete succeeded, the resubmit raised
+    Http404 and dumped a debug page over a delete that had actually worked.
+    """
+    from scheduling.models import ScheduleRun, ScheduleRunStatus
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    url = reverse("schedule_delete", args=[run.pk])
+
+    first = client.post(url, follow=True)
+    second = client.post(url, follow=True)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert not ScheduleRun.objects.filter(pk=run.pk).exists()
+    assert b"already been deleted" in second.content
+
+
+@pytest.mark.django_db
+def test_removing_from_square_for_a_run_that_is_gone_does_not_raise_404(client, manager):
+    from scheduling.models import ScheduleRun
+
+    client.force_login(manager)
+    missing = ScheduleRun.objects.count() + 999
+    response = client.post(reverse("schedule_square_remove", args=[missing]), follow=True)
+
+    assert response.status_code == 200
+    assert b"no longer exists" in response.content

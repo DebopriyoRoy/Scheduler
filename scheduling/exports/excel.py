@@ -59,8 +59,6 @@ def build_schedule_workbook(schedule_run) -> Workbook:
             assignments.get(code).employee.display_name if assignments.get(code) else "SHORTAGE"
             for code in POSITION_CODES
         ]
-        if not show.requires_50_50:
-            people[-1] = "Not required"
         schedule.append(
             [
                 show.date,

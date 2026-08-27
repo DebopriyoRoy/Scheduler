@@ -33,3 +33,13 @@ class SquarePilotNotVerifiedError(SquareIntegrationError):
 class SquarePublishingDisabledError(SquareIntegrationError):
     """Raised if any attempt is made to publish shifts via the application."""
 
+
+
+class SquarePublishedShiftError(SquareIntegrationError):
+    """Raised when a shift cannot be removed because Square has it published.
+
+    Square deletes a draft outright when it is updated with is_deleted, but a
+    published shift is only *marked* by the same call and needs a publish to
+    finalise - which this integration never does. Half-deleting is worse than
+    refusing, so these are reported back to the manager to remove in Square.
+    """

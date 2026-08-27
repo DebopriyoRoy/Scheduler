@@ -1,9 +1,11 @@
 from datetime import date
 
 from django import forms
+from django.utils import timezone
 
 from scheduling.models import (
     Employee,
+    EmployeeTimeOff,
     FiftyFiftyRotationConfig,
     OfficeRotationConfig,
     Show,
@@ -30,8 +32,10 @@ class ShowForm(forms.ModelForm):
             "expected_guests",
             "capacity",
             "capacity_override_reason",
+            # requires_50_50 is deliberately absent: the 50/50 is now part of the
+            # standard crew in staffing_requirements_for(), so a per-show toggle here
+            # would look like it controlled something and control nothing.
             "requires_service_staff",
-            "requires_50_50",
             "notes",
             "active",
         )
@@ -66,6 +70,14 @@ class ScheduleGenerateForm(CalendarImportForm):
 
 class OverrideAssignmentForm(forms.Form):
     employee = forms.ModelChoiceField(queryset=Employee.objects.none())
+    # Optional: an override that only swaps the person keeps the generated window, so
+    # omitting these is a valid request rather than an incomplete one.
+    start_time = forms.TimeField(
+        widget=TimeInput(),
+        required=False,
+        help_text="Local time. Leave as-is to keep the generated shift window.",
+    )
+    end_time = forms.TimeField(widget=TimeInput(), required=False)
     override_reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), min_length=5)
 
     def __init__(self, *args, assignment=None, **kwargs):
@@ -80,6 +92,19 @@ class OverrideAssignmentForm(forms.Form):
                 .distinct()
                 .order_by("display_name")
             )
+            # Prefilled with the window the engine worked out, so a manager replacing
+            # somebody without touching the times keeps exactly what was generated.
+            self.fields["start_time"].initial = timezone.localtime(
+                assignment.start_datetime
+            ).time()
+            self.fields["end_time"].initial = timezone.localtime(assignment.end_datetime).time()
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("start_time"), cleaned.get("end_time")
+        if start and end and start == end:
+            raise forms.ValidationError("The shift start and end times cannot be the same.")
+        return cleaned
 
 
 class OfficeRotationForm(forms.ModelForm):
@@ -101,7 +126,7 @@ class OfficeRotationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["seed_saturday_employee"].queryset = Employee.objects.filter(
             active=True,
-            display_name__in=("Yana", "Khrystyna"),
+            first_name__in=("Yana", "Khrystyna"),
         )
 
 
@@ -114,7 +139,7 @@ class FiftyFiftyRotationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["seed_employee"].queryset = Employee.objects.filter(
             active=True,
-            display_name__in=("Yana", "Kate"),
+            first_name__in=("Yana", "Kate"),
         )
 
 
@@ -122,3 +147,63 @@ class AvailabilityUploadForm(forms.Form):
     csv_file = forms.FileField(
         help_text="CSV columns: employee, date, available, start_time, end_time, notes"
     )
+
+
+class FillAssignmentForm(forms.Form):
+    """Staff a slot the generator left short.
+
+    Mirrors OverrideAssignmentForm, but the times start from the window the generator
+    would have used rather than from an assignment that does not exist yet.
+    """
+
+    employee = forms.ModelChoiceField(queryset=Employee.objects.none())
+    start_time = forms.TimeField(
+        widget=TimeInput(),
+        required=False,
+        help_text="Local time. Leave as-is to use the standard window for this position.",
+    )
+    end_time = forms.TimeField(widget=TimeInput(), required=False)
+    override_reason = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 3}),
+        min_length=5,
+        label="Reason",
+    )
+
+    def __init__(self, *args, template=None, window=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if template is not None:
+            self.fields["employee"].queryset = (
+                Employee.objects.filter(
+                    active=True,
+                    employee_roles__role=template.role,
+                    employee_roles__active=True,
+                )
+                .distinct()
+                .order_by("display_name")
+            )
+        if window is not None:
+            start, end = window
+            self.fields["start_time"].initial = timezone.localtime(start).time()
+            self.fields["end_time"].initial = timezone.localtime(end).time()
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("start_time"), cleaned.get("end_time")
+        if start and end and start == end:
+            raise forms.ValidationError("The shift start and end times cannot be the same.")
+        return cleaned
+
+
+class TimeOffForm(forms.ModelForm):
+    class Meta:
+        model = EmployeeTimeOff
+        fields = ("employee", "start_date", "end_date", "status", "reason")
+        widgets = {"start_date": DateInput(), "end_date": DateInput()}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["employee"].queryset = Employee.objects.filter(active=True).order_by(
+            "display_name"
+        )
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control form-control-sm")

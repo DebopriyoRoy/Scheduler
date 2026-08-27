@@ -6,7 +6,7 @@ from typing import Any
 import requests
 
 from .config import SquareConfig
-from .exceptions import SquareAPIError, SquareConnectionError
+from .exceptions import SquareAPIError, SquareConnectionError, SquarePublishedShiftError
 
 logger = logging.getLogger(__name__)
 
@@ -217,4 +217,34 @@ class SquareClient:
             },
         )
         return dict(payload.get("scheduled_shift", {}))
+
+    def delete_draft_shift(self, shift_id: str) -> dict[str, Any]:
+        """Remove a shift from Square permanently.
+
+        Square publishes no DELETE for scheduled shifts. A shift is removed by
+        updating it with draft_shift_details.is_deleted = true, which Square treats
+        as a hard delete *only while the shift has never been published*. A published
+        shift is merely marked by the same call and needs PublishScheduledShift to
+        finalise, which this integration refuses to call - so those are raised back
+        rather than left half-deleted and looking gone when they are not.
+
+        The current version and details are read first: Square rejects the update if
+        the version is stale, which is what stops this from clobbering a shift a
+        manager edited in the meantime.
+        """
+        self.config.assert_write_allowed()
+        self.config.assert_publishing_disabled()
+
+        shift = self.get_scheduled_shift(shift_id)
+        if shift.get("published_shift_details"):
+            raise SquarePublishedShiftError(
+                f"Shift {shift_id} is published in Square and cannot be removed from here. "
+                "Delete it in the Square dashboard instead."
+            )
+
+        details = dict(shift.get("draft_shift_details") or {})
+        details["is_deleted"] = True
+        return self.update_draft_shift(
+            shift_id, version=int(shift.get("version") or 0), draft_shift_details=details
+        )
 

@@ -32,3 +32,9 @@ psycopg[binary]==3.3.4
 pytest==9.1.1
 pytest-django==4.14.0
 ruff==0.16.4
+
+# Builds the Mac application. Only desktop/build_app.sh needs it, but it belongs
+# here: being absent meant setup-dev-mac.sh never installed it, and the build died
+# on a fresh clone with "No module named PyInstaller". SpiritScheduler.spec excludes
+# it from the bundle, so pinning it costs the shipped app nothing.
+pyinstaller==6.22.2

@@ -1,4 +1,4 @@
-# Spirit Scheduling Engine
+# Spirit Scheduling Agent
 
 An internal Django application for Spirit of Newfoundland Productions. Phase 2 provides a protected, browser-based workflow for importing shows, recording availability, generating deterministic staffing recommendations, reviewing warnings and workload, making audited overrides, approving locally, and exporting management reports.
 

@@ -50,13 +50,18 @@ def staffing_requirements_for(show: Show) -> tuple[list[StaffingRequirement], bo
     bartenders = staff_for_guests(guests, GUESTS_PER_BARTENDER)
     bussers = staff_for_guests(guests, GUESTS_PER_BUSSER)
 
+    # The 50/50 is part of the standard crew, not an extra somebody opts into. It was
+    # gated on Show.requires_50_50, which defaults to False and which the calendar
+    # import never sets - so every show pulled from the live calendar arrived without
+    # one and the role went unstaffed across the entire roster (95 of 96 active shows).
+    # The rule belongs here, beside the rest of the crew, not in a per-show flag that
+    # nothing maintains.
     requirements = [
         StaffingRequirement("Server", servers, on_call_servers_for(servers)),
         StaffingRequirement("Bartender", bartenders, on_call_bartenders_for(bartenders)),
         StaffingRequirement("Busser", bussers, 0),
+        StaffingRequirement("50/50", 1, 0),
     ]
-    if show.requires_50_50:
-        requirements.append(StaffingRequirement("50/50", 1, 0))
 
     return requirements, guests > show.capacity
 

@@ -1,5 +1,5 @@
 {% extends "scheduling/base.html" %}
-{% block title %}Rotation Configuration | Spirit Scheduling Engine{% endblock %}
+{% block title %}Rotation Configuration | Spirit Scheduling Agent{% endblock %}
 {% block content %}
 <div class="mb-4"><p class="text-uppercase text-primary fw-semibold small mb-1">Configuration</p><h1 class="h2">Rotation Seeds</h1><p class="text-secondary">Seeds make future rotation deterministic and management-controlled.</p></div>
 <div class="row g-4"><div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body"><h2 class="h4">Weekend Office Rotation</h2><p>Saturday alternates Yana/Khrystyna; Sunday is the other person. The next weekend swaps.</p><form method="post">{% csrf_token %}<input type="hidden" name="action" value="office">{{ office_form.as_p }}<button class="btn btn-primary">Save Office Seed</button></form></div></div></div>

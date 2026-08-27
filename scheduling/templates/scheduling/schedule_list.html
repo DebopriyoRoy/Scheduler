@@ -1,5 +1,5 @@
 {% extends "scheduling/base.html" %}
-{% block title %}Schedules | Spirit Scheduling Engine{% endblock %}
+{% block title %}Schedules | Spirit Scheduling Agent{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
   <div>
@@ -39,6 +39,20 @@
               <a class="btn btn-sm btn-outline-primary" href="{% url 'schedule_detail' run.pk %}">Review</a>
               {% if section.key == "posted" or section.key == "past" %}
                 <a class="btn btn-sm btn-outline-secondary" href="{% url 'schedule_square_compare' run.pk %}">vs Square</a>
+              {% endif %}
+              {% if run.square_shift_count %}
+                <form method="post" action="{% url 'schedule_square_remove' run.pk %}" class="d-inline"
+                      onsubmit="return confirm('PERMANENTLY REMOVE {{ run.square_shift_count }} shift{{ run.square_shift_count|pluralize }} for schedule #{{ run.pk }} ({{ run.start_date|date:'d M Y' }} - {{ run.end_date|date:'d M Y' }}) FROM SQUARE?\n\nThis deletes {{ run.square_shift_count }} shift{{ run.square_shift_count|pluralize }} from your live Square account, not just from here. Square keeps no copy and there is no undo.\n\nAny shift a manager has already published to staff in Square will be left in place and reported back — those must be removed in Square.');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-danger">Remove from Square ({{ run.square_shift_count }})</button>
+                </form>
+              {% endif %}
+              {% if section.key == "in_progress" and not run.square_shift_count %}
+                <form method="post" action="{% url 'schedule_delete' run.pk %}" class="d-inline"
+                      onsubmit="return confirm('Delete schedule #{{ run.pk }} ({{ run.start_date|date:'d M Y' }} - {{ run.end_date|date:'d M Y' }})?\n\n{{ run.assignment_count }} shift{{ run.assignment_count|pluralize }} and {{ run.warnings.count }} warning{{ run.warnings.count|pluralize }} will be deleted. This cannot be undone.');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
               {% endif %}
             </td>
           </tr>
