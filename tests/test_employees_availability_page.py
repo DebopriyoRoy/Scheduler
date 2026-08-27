@@ -339,3 +339,35 @@ def test_sync_reaches_back_as_well_as_forward(client, manager, jackie, monkeypat
     assert seen["start"] < date_cls.today(), "the sync never revisits older rows"
     assert (date_cls.today() - seen["start"]).days == AVAILABILITY_SYNC_BACKFILL_DAYS
     assert (seen["end"] - date_cls.today()).days == AVAILABILITY_SYNC_DAYS
+
+
+def test_roster_shows_the_full_name_square_uses(client, manager, jackie):
+    """Square shows "Khrystyna Zavadetska"; this roster held only "Khrystyna".
+
+    The page is meant to read as Square's grid does, so it shows Square's name. The
+    record's own display_name is left alone on purpose: the availability sync selects
+    staff by it, so renaming records would quietly cut people out of every sync.
+    """
+    from scheduling.models import SquareEmployeeMapping
+
+    SquareEmployeeMapping.objects.create(
+        employee=jackie,
+        environment="production",
+        square_team_member_id="TM-1",
+        square_given_name="Jackie",
+        square_family_name="Pynn-Smith",
+    )
+
+    client.force_login(manager)
+    html = client.get(reverse("employees")).content.decode()
+
+    assert "Jackie Pynn-Smith" in html
+    jackie.refresh_from_db()
+    assert jackie.display_name == "Jackie Pynn"
+
+
+def test_a_person_square_does_not_know_keeps_their_own_name(client, manager, jackie):
+    """No mapping, no Square name - the row must still say who it is."""
+    client.force_login(manager)
+    html = client.get(reverse("employees")).content.decode()
+    assert "Jackie Pynn" in html

@@ -245,11 +245,18 @@ def employees(request):
         .values_list("source", flat=True)
         .distinct()
     )
-    mapped_ids = set(
-        SquareEmployeeMapping.objects.filter(environment="production").values_list(
-            "employee_id", flat=True
-        )
-    )
+    # Square carries everyone's full name; this roster mostly holds the short one
+    # people are called by, so the page showed "Khrystyna" where Square shows
+    # "Khrystyna Zavadetska". Display Square's name, but keep display_name as the
+    # identity used for matching - the availability sync selects staff by it, and
+    # renaming the records would quietly cut people out of every sync.
+    square_names: dict[int, str] = {}
+    mapped_ids: set[int] = set()
+    for mapping in SquareEmployeeMapping.objects.filter(environment="production"):
+        mapped_ids.add(mapping.employee_id)
+        full = f"{mapping.square_given_name or ''} {mapping.square_family_name or ''}".strip()
+        if full:
+            square_names[mapping.employee_id] = full
 
     rows = []
     for employee in staff:
@@ -274,6 +281,7 @@ def employees(request):
                 "days_known": known,
                 "roles": list(employee.employee_roles.all()),
                 "square_mapped": employee.id in mapped_ids,
+                "full_name": square_names.get(employee.id) or employee.display_name,
             }
         )
 
