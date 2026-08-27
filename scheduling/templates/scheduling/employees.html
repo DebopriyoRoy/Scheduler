@@ -126,9 +126,9 @@
   The weekly pattern is what Square currently holds for that weekday. A dash means
   Square holds nothing for that day, which is not the same as being unavailable
   &mdash; the engine treats an unknown day as unschedulable either way, but only one
-  of the two is worth asking someone about. Syncing reads
-  {{ sync_days }} days forward and replaces only what a previous sync wrote; hours
-  entered by hand on the availability page always survive.
+  of the two is worth asking someone about. Syncing reads {{ sync_days }} days forward
+  and {{ backfill_days }} days back, and replaces only what a previous sync wrote;
+  hours entered by hand on the availability page always survive.
 </p>
 
 <script>

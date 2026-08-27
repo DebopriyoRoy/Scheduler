@@ -130,6 +130,14 @@ def dashboard(request):
 # two-week publishing lead plus the Christmas season.
 AVAILABILITY_SYNC_DAYS = 126
 
+# How far *back* a sync also reaches. A sync only rewrites the dates it is given, so
+# rows dated before today were never revisited and kept whatever an older source had
+# put there - Yana carried a 14:30-00:00 Tuesday from the hand-typed fixture while
+# Square says 14:30-23:59, purely because that row fell one day before the range
+# began. Reaching back a month lets a corrected reader repair recent history rather
+# than leave it stranded.
+AVAILABILITY_SYNC_BACKFILL_DAYS = 30
+
 
 @login_required
 def employees(request):
@@ -290,6 +298,7 @@ def employees(request):
             # invisibility is what let transcribed hours pass as live ones.
             "using_fallback": FALLBACK_AVAILABILITY_SOURCE in live_sources,
             "sync_days": AVAILABILITY_SYNC_DAYS,
+            "backfill_days": AVAILABILITY_SYNC_BACKFILL_DAYS,
         },
     )
 
@@ -327,8 +336,8 @@ def _sync_availability_from_square(request):
     """
     from scheduling.services.square_pull import SquarePullError, run_availability_sync
 
-    start = date.today()
-    end = start + timedelta(days=AVAILABILITY_SYNC_DAYS)
+    start = date.today() - timedelta(days=AVAILABILITY_SYNC_BACKFILL_DAYS)
+    end = date.today() + timedelta(days=AVAILABILITY_SYNC_DAYS)
 
     try:
         result = run_availability_sync(start, end)

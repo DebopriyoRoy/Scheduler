@@ -309,3 +309,33 @@ def test_both_windows_show_in_one_weekday_cell(client, manager, jackie):
     cell = _cell(html, "Jackie Pynn", "Thu")
     assert "11:00-16:00" in cell
     assert "18:00-23:00" in cell
+
+
+def test_sync_reaches_back_as_well_as_forward(client, manager, jackie, monkeypatch):
+    """A sync only rewrites the dates it is given.
+
+    Rows written before today were never revisited, so a window recorded as
+    14:30-00:00 by an earlier, broken parser sat uncorrected because its date fell one
+    day before the range began.
+    """
+    from datetime import date as date_cls
+
+    from scheduling.integrations import square_session
+    from scheduling.services import square_pull
+    from scheduling.views import AVAILABILITY_SYNC_BACKFILL_DAYS, AVAILABILITY_SYNC_DAYS
+
+    square_session.record_session("Test", square_session.DEFAULT_AVAILABILITY_URL)
+    seen = {}
+
+    def capture(start, end):
+        seen["start"], seen["end"] = start, end
+        return {"live": True, "known": 1, "total": 1, "completeness": 100.0}
+
+    monkeypatch.setattr(square_pull, "run_availability_sync", capture)
+
+    client.force_login(manager)
+    client.post(reverse("employees"))
+
+    assert seen["start"] < date_cls.today(), "the sync never revisits older rows"
+    assert (date_cls.today() - seen["start"]).days == AVAILABILITY_SYNC_BACKFILL_DAYS
+    assert (seen["end"] - date_cls.today()).days == AVAILABILITY_SYNC_DAYS
