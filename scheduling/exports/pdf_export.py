@@ -99,8 +99,6 @@ def schedule_pdf_bytes(schedule_run) -> bytes:
             assignments.get(code).employee.display_name if assignments.get(code) else "SHORTAGE"
             for code in POSITION_CODES
         ]
-        if not show.requires_50_50:
-            people[-1] = "N/A"
         schedule_data.append(
             [
                 f"{show.date:%a %b %d}\n{show.title}",

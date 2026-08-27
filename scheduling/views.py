@@ -10,10 +10,14 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.defaultfilters import pluralize
 from django.urls import reverse
 
 from integrations.square import SquareClient, SquareConfig, SquareEnvironment
-from integrations.square.exceptions import SquareIntegrationError
+from integrations.square.exceptions import (
+    SquareIntegrationError,
+    SquareProductionWritesDisabledError,
+)
 from scheduling.exports.csv_export import detailed_schedule_csv
 from scheduling.exports.excel import schedule_workbook_bytes
 from scheduling.exports.pdf_export import schedule_pdf_bytes
@@ -21,10 +25,12 @@ from scheduling.forms import (
     AvailabilityUploadForm,
     CalendarImportForm,
     FiftyFiftyRotationForm,
+    FillAssignmentForm,
     OfficeRotationForm,
     OverrideAssignmentForm,
     ScheduleGenerateForm,
     ShowForm,
+    TimeOffForm,
 )
 from scheduling.importers.availability import (
     AvailabilityCSVError,
@@ -37,6 +43,7 @@ from scheduling.models import (
     CalendarSyncRun,
     Employee,
     EmployeeAvailability,
+    EmployeeTimeOff,
     FiftyFiftyRotationConfig,
     MappingStatus,
     OfficeRotationConfig,
@@ -45,6 +52,7 @@ from scheduling.models import (
     ScheduleRun,
     ScheduleRunStatus,
     SchedulingWarning,
+    ShiftTemplate,
     Show,
     SquareAvailabilitySyncRun,
     SquareEmployeeMapping,
@@ -52,18 +60,28 @@ from scheduling.models import (
     SquareRoleMapping,
     SquareSyncAuditAction,
     SquareSyncAuditLog,
+    TimeOffSource,
+    TimeOffStatus,
     WarningSeverity,
 )
 from scheduling.services.calendar_import import CalendarImportError, run_calendar_import
-from scheduling.services.engine import IncompleteAvailabilityError, SchedulingEngine
+from scheduling.services.engine import (
+    IncompleteAvailabilityError,
+    SchedulingEngine,
+    shift_window_for,
+)
 from scheduling.services.metrics import metrics_for_employee
 from scheduling.services.square_production_sync import (
     EXPECTED_STAFF_NAMES,
     SquareProductionSyncError,
     approve_manual_employee_mapping,
     create_production_pilot_shift,
+    has_untracked_square_creations,
     mark_pilot_verified,
     preview_production_sync,
+    remove_run_from_square,
+    shifts_still_in_square,
+    shifts_still_in_square_by_run,
     sync_full_production_schedule,
     sync_production_jobs,
     sync_production_team_members,
@@ -78,7 +96,12 @@ from scheduling.services.square_sync import (
     sync_schedule_to_sandbox,
     validate_schedule_for_sync,
 )
-from scheduling.services.workflow import approve_schedule, override_assignment, resolve_warning
+from scheduling.services.workflow import (
+    approve_schedule,
+    fill_assignment,
+    override_assignment,
+    resolve_warning,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -299,6 +322,14 @@ def employees(request):
             "using_fallback": FALLBACK_AVAILABILITY_SOURCE in live_sources,
             "sync_days": AVAILABILITY_SYNC_DAYS,
             "backfill_days": AVAILABILITY_SYNC_BACKFILL_DAYS,
+            "time_off_form": TimeOffForm(),
+            # Absences that can still affect a roster. Anything already finished is
+            # history, and only clutters the page management plans from.
+            "time_off": (
+                EmployeeTimeOff.objects.filter(end_date__gte=date.today())
+                .select_related("employee")
+                .order_by("start_date", "employee__display_name")
+            ),
         },
     )
 
@@ -787,13 +818,22 @@ def schedule_list(request):
     from a half-finished draft or something long superseded - they all looked alike,
     and there have been enough runs for the same dates that picking the live one
     mattered.
+
+    square_shift_count is what the row's buttons key off, rather than the section.
+    A pilot sync puts a single shift in Square while the run is still only Approved,
+    and a superseded run can have a full roster still sitting there - neither lands
+    in the "In Square" section, so keying the remove button off the section left both
+    with shifts in Square and no way to remove them.
     """
     today = date.today()
-    runs = (
+    runs = list(
         ScheduleRun.objects.select_related("created_by", "approved_by")
-        .annotate(assignment_count=Count("assignments"))
+        .annotate(assignment_count=Count("assignments", distinct=True))
         .order_by("-start_date", "-id")
     )
+    still_in_square = shifts_still_in_square_by_run([run.pk for run in runs])
+    for run in runs:
+        run.square_shift_count = len(still_in_square.get(run.pk, ()))
 
     groups = {"posted": [], "in_progress": [], "past": [], "superseded": []}
     for run in runs:
@@ -844,7 +884,7 @@ def schedule_list(request):
         "scheduling/schedule_list.html",
         {
             "sections": [s for s in sections if s["runs"]],
-            "total": runs.count(),
+            "total": len(runs),
             "today": today,
         },
     )
@@ -959,6 +999,8 @@ def schedule_override(request, assignment_id):
                 assignment,
                 form.cleaned_data["employee"],
                 form.cleaned_data["override_reason"],
+                start_time=form.cleaned_data["start_time"],
+                end_time=form.cleaned_data["end_time"],
             )
             messages.success(
                 request, f"Overrode {assignment.shift_template.name} with an audit reason."
@@ -999,6 +1041,133 @@ def schedule_new_draft(request, run_id):
         messages.info(request, f"Draft #{draft.pk} created. Generate it when ready.")
         return redirect(f"/schedules/generate/?draft={draft.pk}")
     return redirect("schedule_detail", run_id=run_id)
+
+
+@login_required
+def schedule_delete(request, run_id):
+    """Delete a run outright, together with the roster it produced.
+
+    Everything else here is deliberately soft - shows deactivate, runs supersede -
+    because the history feeds fairness tracking. This one is a real delete: a
+    half-built draft for a period still being worked on is clutter, not history.
+
+    Anything that reached Square is refused. The drafts sitting in Square would
+    outlive the local record that explains where they came from, and the audit log
+    proving what was sent would go with it.
+
+    A run that is already gone is not an error. The browser replays this POST on a
+    back-navigation or a reload, and a second tab can still be showing the run in a
+    list rendered before it went - all of which used to raise a 404 and dump a debug
+    page over a delete that had in fact succeeded.
+    """
+    schedule_run = ScheduleRun.objects.filter(pk=run_id).first()
+    if schedule_run is None:
+        messages.info(request, f"Schedule #{run_id} has already been deleted.")
+        return redirect("schedule_list")
+    if request.method != "POST":
+        return redirect("schedule_detail", run_id=run_id)
+
+    if schedule_run.status == ScheduleRunStatus.SYNCED_TO_SQUARE:
+        messages.error(
+            request,
+            f"Schedule #{schedule_run.pk} has been sent to Square. "
+            "Remove its drafts in Square before deleting it here.",
+        )
+        return redirect("schedule_list")
+
+    # Ask what is still in Square, not what was ever put there. A preview creates
+    # nothing, and a shift already removed is no longer a reason to refuse - gating
+    # on "has ever created" left a run permanently undeletable even after every one
+    # of its shifts had been taken out of Square.
+    remaining = shifts_still_in_square(schedule_run)
+    if remaining:
+        messages.error(
+            request,
+            f"Schedule #{schedule_run.pk} still has {len(remaining)} "
+            f"shift{pluralize(len(remaining))} in Square. Use Remove from Square on "
+            "this row first, then delete it.",
+        )
+        return redirect("schedule_list")
+    if has_untracked_square_creations(schedule_run):
+        messages.error(
+            request,
+            f"Schedule #{schedule_run.pk} recorded creating shifts in Square without "
+            "keeping their ids, so it cannot be confirmed they are gone. Check Square "
+            "and supersede this run rather than deleting the only record of it.",
+        )
+        return redirect("schedule_list")
+
+    shifts = schedule_run.assignments.count()
+    warnings = schedule_run.warnings.count()
+    period = f"{schedule_run.start_date:%d %b %Y} - {schedule_run.end_date:%d %b %Y}"
+    schedule_run.delete()
+    messages.success(
+        request,
+        f"Deleted schedule #{run_id} ({period}) along with "
+        f"{shifts} shift{pluralize(shifts)} and {warnings} warning{pluralize(warnings)}.",
+    )
+    return redirect("schedule_list")
+
+
+@login_required
+def schedule_square_remove(request, run_id):
+    """Delete this run's drafts out of Square itself, permanently.
+
+    The only outward-destructive action in the application. Everything else that
+    touches Square creates drafts and leaves publishing to a manager; this reaches
+    into the live account and removes shifts that are already there.
+
+    It deletes only the shift ids the audit log records this application as having
+    created, so a shift a manager added by hand is never touched. Square has no
+    delete for a published shift that this integration is willing to perform, so
+    any that a manager has already published are reported back rather than left
+    half-removed.
+    """
+    schedule_run = ScheduleRun.objects.filter(pk=run_id).first()
+    if schedule_run is None:
+        # Same replayed-POST case as schedule_delete. Doubly worth catching here:
+        # a resubmit that raised a 404 would look like the Square removal failed,
+        # when the first one may well have deleted the shifts.
+        messages.info(request, f"Schedule #{run_id} no longer exists here.")
+        return redirect("schedule_list")
+    if request.method != "POST":
+        return redirect("schedule_detail", run_id=run_id)
+
+    try:
+        result = remove_run_from_square(schedule_run, request.user)
+    except SquareProductionWritesDisabledError:
+        messages.error(
+            request,
+            "Removing shifts from Square needs SQUARE_PRODUCTION_WRITES_ENABLED=true "
+            "in .env. It is off, so nothing was touched.",
+        )
+        return redirect("schedule_list")
+    except SquareIntegrationError as exc:
+        messages.error(request, f"Square refused the removal: {exc}. Nothing else was changed.")
+        return redirect("schedule_list")
+
+    removed = result.deleted + result.already_gone
+    messages.warning(
+        request,
+        f"Permanently deleted {removed} shift{pluralize(removed)} from Square for "
+        f"schedule #{schedule_run.pk}. This cannot be undone - Square keeps no copy, "
+        "and re-sending the roster would create new shifts.",
+    )
+    if result.published:
+        messages.error(
+            request,
+            f"{len(result.published)} shift{pluralize(len(result.published))} "
+            "had already been published to staff in Square and must be deleted there by "
+            "a manager. This application never publishes, so it cannot remove them.",
+        )
+    if result.failed:
+        messages.error(
+            request,
+            f"{len(result.failed)} shift{pluralize(len(result.failed))} could not be "
+            "removed and are still in Square. The Square sync log on the schedule has "
+            "the reason for each.",
+        )
+    return redirect("schedule_list")
 
 
 @login_required
@@ -1624,3 +1793,121 @@ def square_pull(request):
             "comparable_runs": runs,
         },
     )
+
+
+@login_required
+def schedule_fill(request, run_id, show_id, code):
+    """Staff a position the generator left short."""
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    show = get_object_or_404(Show, pk=show_id)
+    template = get_object_or_404(ShiftTemplate, code=code, active=True)
+    window = shift_window_for(show, template)
+
+    form = FillAssignmentForm(request.POST or None, template=template, window=window)
+    if request.method == "POST" and form.is_valid():
+        try:
+            fill_assignment(
+                schedule_run,
+                show,
+                template,
+                form.cleaned_data["employee"],
+                form.cleaned_data["override_reason"],
+                start_time=form.cleaned_data["start_time"],
+                end_time=form.cleaned_data["end_time"],
+            )
+            messages.success(
+                request,
+                f"{form.cleaned_data['employee'].display_name} added to {template.name}.",
+            )
+            return redirect("schedule_detail", run_id=run_id)
+        except ValidationError as exc:
+            form.add_error(None, exc)
+
+    return render(
+        request,
+        "scheduling/schedule_fill.html",
+        {
+            "schedule_run": schedule_run,
+            "show": show,
+            "template": template,
+            "form": form,
+        },
+    )
+
+
+@login_required
+def time_off_add(request):
+    if request.method == "POST":
+        form = TimeOffForm(request.POST)
+        if form.is_valid():
+            entry = form.save(commit=False)
+            entry.source = TimeOffSource.MANUAL
+            entry.full_clean()
+            entry.save()
+            state = "will be" if entry.status == TimeOffStatus.APPROVED else "will not be"
+            messages.success(
+                request,
+                f"Time off recorded for {entry.employee.display_name}. "
+                f"It {state} applied when schedules are generated.",
+            )
+        else:
+            messages.error(request, "; ".join(f"{k}: {v[0]}" for k, v in form.errors.items()))
+    return redirect("employees")
+
+
+@login_required
+def time_off_approve(request, entry_id):
+    entry = EmployeeTimeOff.objects.filter(pk=entry_id).first()
+    if entry is None:
+        messages.info(request, "That time-off entry no longer exists.")
+        return redirect("employees")
+    if request.method == "POST":
+        entry.status = TimeOffStatus.APPROVED
+        entry.save(update_fields=["status"])
+        messages.success(
+            request,
+            f"Approved. {entry.employee.display_name} will not be scheduled "
+            f"{entry.start_date:%d %b} to {entry.end_date:%d %b}.",
+        )
+    return redirect("employees")
+
+
+@login_required
+def time_off_delete(request, entry_id):
+    entry = EmployeeTimeOff.objects.filter(pk=entry_id).first()
+    if entry is None:
+        messages.info(request, "That time-off entry no longer exists.")
+        return redirect("employees")
+    if request.method == "POST":
+        name = entry.employee.display_name
+        entry.delete()
+        messages.success(request, f"Removed the time-off entry for {name}.")
+    return redirect("employees")
+
+
+@login_required
+def time_off_sync(request):
+    """Re-read Square's Time off page and mirror it here."""
+    if request.method != "POST":
+        return redirect("employees")
+    from scheduling.integrations.square_session import SquareSessionError
+    from scheduling.integrations.square_time_off.service import sync_time_off
+
+    try:
+        result = sync_time_off()
+    except SquareSessionError as exc:
+        messages.error(request, f"{exc}")
+        return redirect("employees")
+    except Exception as exc:  # the dashboard is a moving target; say so plainly
+        logger.exception("time off sync failed")
+        messages.error(request, f"Could not read Square's Time off page: {exc}")
+        return redirect("employees")
+
+    messages.success(request, f"Time off synced from Square: {result.summary}")
+    if result.unmatched:
+        messages.warning(
+            request,
+            "Those names had no match on the roster, so their time off is NOT being "
+            "applied. Check the spelling against Square.",
+        )
+    return redirect("employees")

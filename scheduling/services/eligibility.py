@@ -5,6 +5,7 @@ from django.db.models import Q
 
 from scheduling.models import (
     Employee,
+    EmployeeTimeOff,
     OfficeAssignment,
     Role,
     ScheduleAssignment,
@@ -12,6 +13,7 @@ from scheduling.models import (
     ScheduleRunStatus,
     ShiftTemplate,
     Show,
+    TimeOffStatus,
 )
 from scheduling.services.availability import AvailabilityProvider, LocalAvailabilityProvider
 
@@ -86,6 +88,26 @@ class EligibilityService:
         )
         if not availability.available:
             reasons.extend(availability.reasons)
+
+        # Approved time off only. A pending request is a question a manager has not
+        # answered yet, and a declined one is an answer of no - treating either as a
+        # refusal would quietly overrule the person whose decision it is.
+        time_off = EmployeeTimeOff.objects.filter(
+            employee=employee,
+            status=TimeOffStatus.APPROVED,
+            start_date__lte=show.date,
+            end_date__gte=show.date,
+        )
+        for absence in time_off:
+            if absence.covers(show.date, shift_start_time, shift_end_time):
+                window = (
+                    "all day"
+                    if absence.is_whole_day
+                    else f"{absence.start_time:%H:%M}-{absence.end_time:%H:%M}"
+                )
+                detail = f" ({absence.reason})" if absence.reason else ""
+                reasons.append(f"Approved time off on this date ({window}){detail}.")
+                break
 
         office_conflict = OfficeAssignment.objects.filter(
             employee=employee,

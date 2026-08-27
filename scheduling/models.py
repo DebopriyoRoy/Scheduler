@@ -702,7 +702,7 @@ class OfficeRotationConfig(models.Model):
         super().clean()
         if self.seed_date.weekday() != 5:
             raise ValidationError({"seed_date": "Office rotation seed date must be a Saturday."})
-        if self.seed_saturday_employee.display_name not in {"Yana", "Khrystyna"}:
+        if self.seed_saturday_employee.first_name not in {"Yana", "Khrystyna"}:
             raise ValidationError({"seed_saturday_employee": "Choose either Yana or Khrystyna."})
         if self.office_end_time <= self.office_start_time:
             raise ValidationError({"office_end_time": "Office end must be after start."})
@@ -751,7 +751,7 @@ class FiftyFiftyRotationConfig(models.Model):
 
     def clean(self) -> None:
         super().clean()
-        if self.seed_employee.display_name not in {"Yana", "Kate"}:
+        if self.seed_employee.first_name not in {"Yana", "Kate"}:
             raise ValidationError({"seed_employee": "Choose either Yana or Kate."})
 
 
@@ -785,6 +785,15 @@ class SquareSyncAuditAction(models.TextChoices):
     PRODUCTION_DRAFT_FAILED = "PRODUCTION_DRAFT_FAILED", "Production draft failed"
     PRODUCTION_DRAFT_VERIFIED = "PRODUCTION_DRAFT_VERIFIED", "Production draft verified"
     PRODUCTION_SYNC_COMPLETED = "PRODUCTION_SYNC_COMPLETED", "Production sync completed"
+    PRODUCTION_DRAFT_DELETED = "PRODUCTION_DRAFT_DELETED", "Production draft deleted"
+    PRODUCTION_DRAFT_DELETE_FAILED = (
+        "PRODUCTION_DRAFT_DELETE_FAILED",
+        "Production draft delete failed",
+    )
+    PRODUCTION_REMOVED_FROM_SQUARE = (
+        "PRODUCTION_REMOVED_FROM_SQUARE",
+        "Production roster removed from Square",
+    )
 
 
 class SquareEmployeeMapping(models.Model):
@@ -1156,3 +1165,84 @@ class SchedulingFairnessSnapshot(models.Model):
     def __str__(self) -> str:
         return f"{self.employee} - {self.schedule_run}: Score {self.confirmed_fair_score}"
 
+
+
+class TimeOffStatus(models.TextChoices):
+    """Square's own states. Only APPROVED keeps somebody off the schedule.
+
+    A pending request is a question, not a decision - blocking on it would silently
+    over-rule a manager who has not answered yet, and declining it later would leave
+    a roster that was built around a refusal.
+    """
+
+    PENDING = "PENDING", "Pending"
+    APPROVED = "APPROVED", "Approved"
+    DECLINED = "DECLINED", "Declined"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+class TimeOffSource(models.TextChoices):
+    SQUARE = "SQUARE", "Square"
+    MANUAL = "MANUAL", "Entered here"
+
+
+class EmployeeTimeOff(models.Model):
+    """An approved or pending absence, mirroring Square's Time off page.
+
+    Stored as a date range rather than per-date rows: that is how Square holds it and
+    how a request is made ("the 12th to the 15th"), and expanding it into rows would
+    have to be re-expanded every time the range is edited.
+    """
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="time_off")
+    start_date = models.DateField()
+    end_date = models.DateField()
+    # Null for a whole-day absence, which is the common case.
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=TimeOffStatus.choices, default=TimeOffStatus.PENDING
+    )
+    reason = models.CharField(max_length=200, blank=True)
+    source = models.CharField(
+        max_length=20, choices=TimeOffSource.choices, default=TimeOffSource.MANUAL
+    )
+    # Square's own id where one is available, so a re-sync updates rather than duplicates.
+    square_time_off_id = models.CharField(max_length=64, blank=True)
+    # Square shows these three as their own columns and management reads them, so they
+    # are mirrored verbatim rather than recomputed - "7d" approved against a "6d"
+    # request is a discrepancy worth seeing, and deriving it here would hide it.
+    requested_time = models.CharField(max_length=20, blank=True)
+    approved_all_day = models.CharField(max_length=20, blank=True)
+    approved_partial = models.CharField(max_length=20, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-start_date", "employee__display_name")
+        indexes = [models.Index(fields=["start_date", "end_date", "status"])]
+
+    def __str__(self) -> str:
+        return f"{self.employee.display_name} {self.start_date}..{self.end_date} ({self.status})"
+
+    def clean(self):
+        if self.end_date < self.start_date:
+            raise ValidationError({"end_date": "End date must not precede the start date."})
+
+    @property
+    def is_whole_day(self) -> bool:
+        return self.start_time is None and self.end_time is None
+
+    def covers(self, day, shift_start=None, shift_end=None) -> bool:
+        """Whether this absence blocks a shift on `day`.
+
+        A whole-day absence blocks anything that day. A partial one only blocks a
+        shift it actually overlaps, so somebody off for a morning appointment can
+        still work that evening's show.
+        """
+        if not (self.start_date <= day <= self.end_date):
+            return False
+        if self.is_whole_day or shift_start is None or shift_end is None:
+            return True
+        return self.start_time < shift_end and self.end_time > shift_start

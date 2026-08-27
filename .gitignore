@@ -5,6 +5,9 @@ __pycache__/
 **/__pycache__/
 *.pyc
 db.sqlite3
+# ...and any copy of it. A backup taken before a risky change is still real
+# rostering data and still must not leave this machine.
+db.sqlite3.*
 .DS_Store
 .coverage
 htmlcov/

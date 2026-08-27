@@ -11,6 +11,8 @@ from integrations.square.client import SquareClient
 from integrations.square.config import SquareConfig, SquareEnvironment
 from integrations.square.exceptions import (
     SquareAPIError,
+    SquareIntegrationError,
+    SquarePublishedShiftError,
 )
 from scheduling.models import (
     Employee,
@@ -670,7 +672,7 @@ def create_production_pilot_shift(
     # useful on the floor. Internal run bookkeeping is deliberately kept out of them.
     if assignment.assignment_type == "ON_CALL":
         notes = (
-            f"Spirit Scheduling Engine\n"
+            f"Spirit Scheduling Agent\n"
             f"Show: {assignment.show.title}\n"
             f"Assignment: ON CALL {assignment.role.name}\n"
             f"Management confirmation required\n"
@@ -678,7 +680,7 @@ def create_production_pilot_shift(
         )
     else:
         notes = (
-            f"Spirit Scheduling Engine\n"
+            f"Spirit Scheduling Agent\n"
             f"Show: {assignment.show.title}\n"
             f"Assignment: {assignment.get_assignment_type_display()}\n"
             f"Expected Guests: {assignment.show.planning_guest_count}"
@@ -815,7 +817,7 @@ def sync_full_production_schedule(
 
         # Staff-facing note: no internal run bookkeeping. See _create_single_shift().
         notes = (
-            f"Spirit Scheduling Engine\n"
+            f"Spirit Scheduling Agent\n"
             f"Show: {assignment.show.title}\n"
             f"Assignment: {assignment.get_assignment_type_display()}\n"
             f"Expected Guests: {assignment.show.planning_guest_count}"
@@ -903,3 +905,176 @@ def sync_full_production_schedule(
         "failed_shifts": failed_shifts,
         "status": schedule_run.status,
     }
+
+
+@dataclass(frozen=True)
+class SquareRemovalResult:
+    """What actually happened in Square, per shift, so the manager is told the truth."""
+
+    deleted: int
+    already_gone: int
+    published: tuple[str, ...]
+    failed: tuple[str, ...]
+
+    @property
+    def clean(self) -> bool:
+        return not self.published and not self.failed
+
+
+def remove_run_from_square(schedule_run, user=None) -> SquareRemovalResult:
+    """Delete every draft this run created in Square, permanently.
+
+    The shift ids come from the audit log rather than from Square, so this only ever
+    touches shifts this application is recorded as having created - a search by date
+    and location would sweep up shifts a manager entered by hand.
+
+    Nothing is rolled back on partial failure. A shift already deleted in Square is
+    counted as done rather than treated as an error, because the goal state is
+    "not in Square" and it is already there. Published shifts and hard failures are
+    named in the result so the manager knows exactly what is left behind.
+    """
+    config = SquareConfig.from_env()
+    config.assert_write_allowed()
+
+    created = (
+        schedule_run.square_sync_audit_logs.filter(
+            action_type__in=(
+                SquareSyncAuditAction.PRODUCTION_DRAFT_CREATED,
+                SquareSyncAuditAction.PRODUCTION_PILOT_CREATED,
+            )
+        )
+        .exclude(square_scheduled_shift_id="")
+        .exclude(square_scheduled_shift_id=None)
+    )
+    shift_ids = sorted({row.square_scheduled_shift_id for row in created})
+
+    client = SquareClient(config)
+    deleted = already_gone = 0
+    published: list[str] = []
+    failed: list[str] = []
+
+    for shift_id in shift_ids:
+        try:
+            client.delete_draft_shift(shift_id)
+        except SquarePublishedShiftError:
+            published.append(shift_id)
+            _log_removal(SquareSyncAuditAction.PRODUCTION_DRAFT_DELETE_FAILED, schedule_run,
+                         user, shift_id, {"reason": "published in Square"})
+            continue
+        except SquareAPIError as exc:
+            if exc.status_code == 404:
+                already_gone += 1
+                _log_removal(SquareSyncAuditAction.PRODUCTION_DRAFT_DELETED, schedule_run,
+                             user, shift_id, {"note": "already absent from Square"})
+                continue
+            failed.append(shift_id)
+            _log_removal(SquareSyncAuditAction.PRODUCTION_DRAFT_DELETE_FAILED, schedule_run,
+                         user, shift_id, {"reason": str(exc)})
+            continue
+        except SquareIntegrationError as exc:
+            failed.append(shift_id)
+            _log_removal(SquareSyncAuditAction.PRODUCTION_DRAFT_DELETE_FAILED, schedule_run,
+                         user, shift_id, {"reason": str(exc)})
+            continue
+        deleted += 1
+        _log_removal(
+            SquareSyncAuditAction.PRODUCTION_DRAFT_DELETED, schedule_run, user, shift_id, {}
+        )
+
+    result = SquareRemovalResult(
+        deleted=deleted,
+        already_gone=already_gone,
+        published=tuple(published),
+        failed=tuple(failed),
+    )
+
+    if result.clean:
+        # It is no longer in Square, so it must not keep claiming to be. Back to a
+        # reviewable state rather than a new status nobody else understands.
+        schedule_run.status = ScheduleRunStatus.NEEDS_REVIEW
+        schedule_run.save(update_fields=["status"])
+
+    _log_removal(
+        SquareSyncAuditAction.PRODUCTION_REMOVED_FROM_SQUARE,
+        schedule_run,
+        user,
+        "",
+        {
+            "deleted": deleted,
+            "already_gone": already_gone,
+            "published": published,
+            "failed": failed,
+        },
+    )
+    return result
+
+
+def _log_removal(action, schedule_run, user, shift_id, details):
+    SquareSyncAuditLog.objects.create(
+        action_type=action,
+        environment=SquareEnvironment.PRODUCTION.value,
+        user=user if user and user.is_authenticated else None,
+        schedule_run=schedule_run,
+        square_scheduled_shift_id=shift_id or "",
+        details=details,
+    )
+
+
+CREATED_IN_SQUARE = (
+    SquareSyncAuditAction.PRODUCTION_DRAFT_CREATED,
+    SquareSyncAuditAction.PRODUCTION_PILOT_CREATED,
+)
+
+
+def shifts_still_in_square(schedule_run) -> set[str]:
+    """Shift ids this run put in Square and has not since removed.
+
+    The created rows stay in the audit log forever - that is the point of an audit
+    log - so "has it ever created a shift" is the wrong question to gate deletion on.
+    It answers yes for the rest of time, including after every shift has been removed.
+    What matters is what is still there: created minus deleted.
+    """
+    logs = schedule_run.square_sync_audit_logs
+    created = set(
+        logs.filter(action_type__in=CREATED_IN_SQUARE)
+        .exclude(square_scheduled_shift_id="")
+        .values_list("square_scheduled_shift_id", flat=True)
+    )
+    removed = set(
+        logs.filter(action_type=SquareSyncAuditAction.PRODUCTION_DRAFT_DELETED)
+        .exclude(square_scheduled_shift_id="")
+        .values_list("square_scheduled_shift_id", flat=True)
+    )
+    return created - removed
+
+
+def shifts_still_in_square_by_run(run_ids) -> dict[int, set[str]]:
+    """The same question for a page full of runs, in one query rather than N."""
+    rows = SquareSyncAuditLog.objects.filter(
+        schedule_run_id__in=list(run_ids),
+        action_type__in=(*CREATED_IN_SQUARE, SquareSyncAuditAction.PRODUCTION_DRAFT_DELETED),
+    ).exclude(square_scheduled_shift_id="").values_list(
+        "schedule_run_id", "action_type", "square_scheduled_shift_id"
+    )
+    created: dict[int, set[str]] = {}
+    removed: dict[int, set[str]] = {}
+    for run_id, action, shift_id in rows:
+        bucket = removed if action == SquareSyncAuditAction.PRODUCTION_DRAFT_DELETED else created
+        bucket.setdefault(run_id, set()).add(shift_id)
+    return {rid: ids - removed.get(rid, set()) for rid, ids in created.items()}
+
+
+def has_untracked_square_creations(schedule_run) -> bool:
+    """True when a created row carries no shift id to check or remove.
+
+    No current code path writes one - every creation records the id Square returned -
+    but if one ever appears it means a shift may exist in Square that this application
+    cannot identify, let alone delete. Deleting the local run would then discard the
+    only record that it happened, so this is treated as a reason to refuse.
+    """
+    return (
+        schedule_run.square_sync_audit_logs.filter(
+            action_type__in=CREATED_IN_SQUARE, square_scheduled_shift_id=""
+        )
+        .exists()
+    )

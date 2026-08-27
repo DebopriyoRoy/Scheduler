@@ -12,9 +12,12 @@ from scheduling.models import (
 
 
 def _other_employee(name: str, pair: tuple[str, str]) -> Employee:
+    # The pairs below are first names. Match on Employee.first_name, never on
+    # display_name: Square sync rewrites display_name to the full "Yana Pasechniuk"
+    # form, which silently matches nothing here.
     other_name = pair[1] if name == pair[0] else pair[0]
     try:
-        return Employee.objects.get(display_name=other_name, active=True)
+        return Employee.objects.get(first_name=other_name, active=True)
     except Employee.DoesNotExist as exc:
         raise ImproperlyConfigured(
             f"Rotation employee {other_name!r} is missing or inactive."
@@ -26,7 +29,7 @@ def generate_office_assignments(start_date: date, end_date: date) -> list[Office
     config = OfficeRotationConfig.objects.select_related("seed_saturday_employee").first()
     if config is None:
         return []
-    second = _other_employee(config.seed_saturday_employee.display_name, ("Yana", "Khrystyna"))
+    second = _other_employee(config.seed_saturday_employee.first_name, ("Yana", "Khrystyna"))
     created_or_updated: list[OfficeAssignment] = []
     current = start_date
     while current <= end_date:
@@ -59,7 +62,7 @@ class FiftyFiftyRotation:
 
     def __init__(self):
         config = FiftyFiftyRotationConfig.objects.select_related("seed_employee").first()
-        self.next_name = config.seed_employee.display_name if config else "Yana"
+        self.next_name = config.seed_employee.first_name if config else "Yana"
 
     def ordered_candidates(self, eligible_names: set[str]) -> list[str]:
         pair = ("Yana", "Kate")

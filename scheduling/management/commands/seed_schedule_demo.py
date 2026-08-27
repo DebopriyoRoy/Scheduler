@@ -74,7 +74,7 @@ class Command(BaseCommand):
                         "notes": "DEMO DATA — all-day sample availability.",
                     },
                 )
-        yana = Employee.objects.get(display_name="Yana")
+        yana = Employee.objects.get(first_name="Yana")
         office = OfficeRotationConfig.objects.first()
         OfficeRotationConfig.objects.update_or_create(
             pk=office.pk if office else None,

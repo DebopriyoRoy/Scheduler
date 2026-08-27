@@ -104,7 +104,7 @@ def _key(**overrides):
         "location_id": "LOC1",
         "start_at": "2026-09-10T18:00:00-02:30",
         "end_at": "2026-09-10T22:45:00-02:30",
-        "notes": "Spirit Scheduling Engine\nShow: Test\nAssignment: Confirmed",
+        "notes": "Spirit Scheduling Agent\nShow: Test\nAssignment: Confirmed",
     }
     base.update(overrides)
     return shift_idempotency_key(overrides.pop("assignment_id", 42), **base)
@@ -118,7 +118,7 @@ def test_idempotency_key_is_stable_for_an_identical_request():
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("notes", "Spirit Scheduling Engine\nShow: Test\nAssignment: On Call"),
+        ("notes", "Spirit Scheduling Agent\nShow: Test\nAssignment: On Call"),
         ("start_at", "2026-09-10T17:45:00-02:30"),
         ("end_at", "2026-09-10T23:00:00-02:30"),
         ("job_id", "JOB2"),

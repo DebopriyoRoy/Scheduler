@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.utils import timezone
 
+from scheduling.forms import FiftyFiftyRotationForm, OfficeRotationForm
 from scheduling.models import (
     MINIMUM_VIABLE_GUESTS,
     AssignmentType,
@@ -434,6 +435,60 @@ def test_weekend_office_rotation_alternates(configured_staff):
 
 
 @pytest.mark.django_db
+def test_rotations_survive_square_renaming_display_names(configured_staff):
+    """Square sync rewrites display_name to the full "Yana Pasechniuk" form.
+
+    Both rotations key off hardcoded first-name pairs. Matching those against
+    display_name resolved nothing once the sync had run: the office rotation
+    raised ImproperlyConfigured and the 50/50 alternation silently returned an
+    empty candidate list. Every other fixture here seeds bare first names, so
+    nothing caught it until real data hit the engine.
+    """
+    for first, last in (("Yana", "Pasechniuk"), ("Khrystyna", "Zavadetska"), ("Kate", "Griffin")):
+        Employee.objects.filter(display_name=first).update(
+            last_name=last, display_name=f"{first} {last}"
+        )
+    yana = Employee.objects.get(first_name="Yana")
+    OfficeRotationConfig.objects.create(seed_date=date(2026, 9, 12), seed_saturday_employee=yana)
+    FiftyFiftyRotationConfig.objects.create(seed_employee=yana)
+
+    dates = [date(2026, 9, 12), date(2026, 9, 13), date(2026, 9, 19), date(2026, 9, 20)]
+    for show_date in dates:
+        make_show(show_date)
+    make_all_available(configured_staff, *dates)
+    run = SchedulingEngine().generate(dates[0], dates[-1])
+
+    office = list(
+        OfficeAssignment.objects.order_by("date").values_list("employee__display_name", flat=True)
+    )
+    assert office == [
+        "Yana Pasechniuk",
+        "Khrystyna Zavadetska",
+        "Khrystyna Zavadetska",
+        "Yana Pasechniuk",
+    ]
+
+    fifty = list(
+        run.assignments.filter(assignment_type=AssignmentType.FIFTY_FIFTY)
+        .order_by("show__date")
+        .values_list("employee__first_name", flat=True)
+    )
+    assert fifty, "the 50/50 rotation produced no assignments at all"
+    assert set(fifty) == {"Yana", "Kate"}
+
+    # The configuration page picks the same people through its own querysets and
+    # model validators. Filtering those on display_name emptied both dropdowns,
+    # so the page rejected every save with "Choose either Yana or Khrystyna" and
+    # offered no such choice.
+    office_choices = OfficeRotationForm().fields["seed_saturday_employee"].queryset
+    fifty_choices = FiftyFiftyRotationForm().fields["seed_employee"].queryset
+    assert {e.first_name for e in office_choices} == {"Yana", "Khrystyna"}
+    assert {e.first_name for e in fifty_choices} == {"Yana", "Kate"}
+    OfficeRotationConfig.objects.first().full_clean()
+    FiftyFiftyRotationConfig.objects.first().full_clean()
+
+
+@pytest.mark.django_db
 def test_office_warning_only_when_shift_times_overlap(configured_staff):
     show = make_show(requires_50_50=False)
     make_all_available(configured_staff, show.date)
@@ -480,3 +535,309 @@ def test_schedule_generation_is_deterministic(configured_staff):
         )
     )
     assert first_assignments == second_assignments
+
+
+@pytest.mark.django_db
+def test_every_show_gets_a_fifty_fifty_regardless_of_the_legacy_flag(configured_staff):
+    """The 50/50 is standard crew, not opt-in.
+
+    Show.requires_50_50 defaults to False and the calendar import never sets it, so
+    gating on it left 95 of 96 real shows with no 50/50 rostered at all. The flag is
+    deliberately False here: the requirement must appear anyway.
+    """
+    show = make_show(requires_50_50=False)
+    requirements, _ = staffing_requirements_for(show)
+    by_role = {r.role_name: r for r in requirements}
+
+    assert by_role["50/50"].confirmed_count == 1
+    assert by_role["50/50"].on_call_count == 0
+
+
+@pytest.mark.django_db
+def test_the_standard_crew_for_a_seventy_five_to_hundred_guest_show(configured_staff):
+    """3 servers + 1 on-call, 1 bartender + 1 on-call, 1 busser, 1 fifty-fifty."""
+    show = make_show(expected_guests=80, requires_50_50=False)
+    requirements, _ = staffing_requirements_for(show)
+    counts = {r.role_name: (r.confirmed_count, r.on_call_count) for r in requirements}
+
+    assert counts == {
+        "Server": (3, 1),
+        "Bartender": (1, 1),
+        "Busser": (1, 0),
+        "50/50": (1, 0),
+    }
+    # The totals management works to for this band: six people on, two on standby.
+    assert sum(c for c, _ in counts.values()) == 6
+    assert sum(o for _, o in counts.values()) == 2
+
+
+@pytest.mark.django_db
+def test_a_fifty_fifty_is_actually_rostered_on_a_show_that_never_opted_in(configured_staff):
+    show = make_show(requires_50_50=False)
+    make_all_available(configured_staff, show.date)
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    assert run.assignments.filter(assignment_type=AssignmentType.FIFTY_FIFTY).count() == 1
+
+
+@pytest.mark.django_db
+def test_regenerating_a_period_retires_the_previous_run_for_it(configured_staff):
+    """One live run per period.
+
+    Regenerating used to leave both attempts in "In progress", each saying Needs
+    review, with nothing but the run number to say which was current.
+    """
+    show = make_show()
+    make_all_available(configured_staff, show.date)
+
+    first = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+    second = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.status == ScheduleRunStatus.SUPERSEDED_SOURCE_DATA
+    assert second.status != ScheduleRunStatus.SUPERSEDED_SOURCE_DATA
+
+
+@pytest.mark.django_db
+def test_a_run_already_sent_to_square_is_never_retired_by_a_regeneration(configured_staff):
+    """Its shifts are live in Square, so the record explaining them stays current."""
+    show = make_show()
+    make_all_available(configured_staff, show.date)
+
+    synced = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+    synced.status = ScheduleRunStatus.SYNCED_TO_SQUARE
+    synced.save(update_fields=["status"])
+
+    SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    synced.refresh_from_db()
+    assert synced.status == ScheduleRunStatus.SYNCED_TO_SQUARE
+
+
+@pytest.mark.django_db
+def test_a_run_for_a_different_period_is_left_alone(configured_staff):
+    """Only an identical range is retired.
+
+    Superseding anything that merely overlapped would let one regenerated day quietly
+    retire the whole month around it.
+    """
+    day = make_show(date(2026, 9, 12))
+    other = make_show(date(2026, 9, 19))
+    make_all_available(configured_staff, day.date, other.date)
+
+    month = SchedulingEngine().generate(day.date, other.date, allow_shortages=True)
+    SchedulingEngine().generate(day.date, day.date, allow_shortages=True)
+
+    month.refresh_from_db()
+    assert month.status != ScheduleRunStatus.SUPERSEDED_SOURCE_DATA
+
+
+@pytest.fixture
+def one_show_run(configured_staff):
+    show = make_show()
+    make_all_available(configured_staff, show.date)
+    return SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+
+def _free_server(run, show):
+    return next(
+        e
+        for e in Employee.objects.filter(employee_roles__role__name="Server", active=True)
+        if not run.assignments.filter(show=show, employee=e).exists()
+    )
+
+
+@pytest.mark.django_db
+def test_an_override_can_move_the_shift_window(one_show_run):
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    replacement = _free_server(one_show_run, assignment.show)
+
+    override_assignment(
+        assignment,
+        replacement,
+        "covering a late start",
+        start_time=time(18, 15),
+        end_time=time(22, 0),
+    )
+
+    assignment.refresh_from_db()
+    assert timezone.localtime(assignment.start_datetime).time() == time(18, 15)
+    assert timezone.localtime(assignment.end_datetime).time() == time(22, 0)
+    assert assignment.employee == replacement
+
+
+@pytest.mark.django_db
+def test_moving_the_window_recalculates_the_paid_hours(one_show_run):
+    """Leaving the generated hours behind would misreport workload and Square."""
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    replacement = _free_server(one_show_run, assignment.show)
+
+    override_assignment(
+        assignment, replacement, "shorter cover", start_time=time(19, 0), end_time=time(22, 0)
+    )
+
+    assignment.refresh_from_db()
+    assert assignment.scheduled_paid_hours == Decimal("3.00")
+    assert assignment.on_call_hours == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_an_override_that_leaves_the_times_alone_keeps_the_generated_window(one_show_run):
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    before = (assignment.start_datetime, assignment.end_datetime)
+    replacement = _free_server(one_show_run, assignment.show)
+
+    override_assignment(assignment, replacement, "like for like")
+
+    assignment.refresh_from_db()
+    assert (assignment.start_datetime, assignment.end_datetime) == before
+
+
+@pytest.mark.django_db
+def test_eligibility_is_checked_against_the_new_window_not_the_generated_one(one_show_run):
+    """The check must follow the times being saved.
+
+    Validating the old hours and then writing different ones would wave through
+    exactly the case the availability check exists to catch.
+    """
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    replacement = _free_server(one_show_run, assignment.show)
+    entry = EmployeeAvailability.objects.get(employee=replacement, date=assignment.show.date)
+    entry.availability_type = AvailabilityType.AVAILABLE_WINDOW
+    entry.start_time = time(17, 0)
+    entry.end_time = time(21, 0)
+    entry.save()
+
+    with pytest.raises(ValidationError):
+        override_assignment(
+            assignment, replacement, "runs past their window", end_time=time(23, 30)
+        )
+
+    assignment.refresh_from_db()
+    assert assignment.employee != replacement
+
+
+@pytest.mark.django_db
+def test_a_shift_ending_after_midnight_is_read_as_the_next_day(one_show_run):
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    replacement = _free_server(one_show_run, assignment.show)
+
+    override_assignment(
+        assignment, replacement, "late bar close", start_time=time(21, 0), end_time=time(0, 30)
+    )
+
+    assignment.refresh_from_db()
+    assert assignment.end_datetime > assignment.start_datetime
+    assert assignment.scheduled_paid_hours == Decimal("3.50")
+
+
+def _shortage_run(configured_staff):
+    """A run with a genuine on-call server shortage: only three servers can work."""
+    show = make_show()
+    make_all_available(configured_staff, show.date)
+    keep = list(Employee.objects.filter(employee_roles__role__name="Server", active=True))[:3]
+    EmployeeAvailability.objects.filter(date=show.date).exclude(
+        employee__in=keep + list(Employee.objects.exclude(employee_roles__role__name="Server"))
+    ).update(availability_type=AvailabilityType.UNAVAILABLE)
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+    return run, show
+
+
+@pytest.mark.django_db
+def test_a_shortage_slot_can_be_filled_by_hand(configured_staff):
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.workflow import fill_assignment
+
+    run, show = _shortage_run(configured_staff)
+    template = ShiftTemplate.objects.get(code="on-call-server")
+    if run.assignments.filter(shift_template=template).exists():
+        pytest.skip("no shortage produced for this fixture")
+    candidate = next(
+        e
+        for e in Employee.objects.filter(employee_roles__role__name="Server", active=True)
+        if not run.assignments.filter(show=show, employee=e).exists()
+    )
+    EmployeeAvailability.objects.filter(employee=candidate, date=show.date).update(
+        availability_type=AvailabilityType.AVAILABLE_ALL_DAY
+    )
+
+    fill_assignment(run, show, template, candidate, "manager knows they can come in")
+
+    assignment = run.assignments.get(shift_template=template)
+    assert assignment.employee == candidate
+    assert assignment.manually_overridden is True
+
+
+@pytest.mark.django_db
+def test_filling_a_shortage_clears_the_hard_error_blocking_approval(configured_staff):
+    """Without this the run could never be approved.
+
+    The shortage warning is an ERROR, approval refuses while one is unresolved, and
+    the warnings screen that used to clear them by hand has been removed.
+    """
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.workflow import fill_assignment
+
+    run, show = _shortage_run(configured_staff)
+    template = ShiftTemplate.objects.get(code="on-call-server")
+    if run.assignments.filter(shift_template=template).exists():
+        pytest.skip("no shortage produced for this fixture")
+    assert run.warnings.filter(
+        warning_type=WarningType.ON_CALL_SERVER_SHORTAGE, resolved=False
+    ).exists()
+
+    candidate = next(
+        e
+        for e in Employee.objects.filter(employee_roles__role__name="Server", active=True)
+        if not run.assignments.filter(show=show, employee=e).exists()
+    )
+    EmployeeAvailability.objects.filter(employee=candidate, date=show.date).update(
+        availability_type=AvailabilityType.AVAILABLE_ALL_DAY
+    )
+    fill_assignment(run, show, template, candidate, "covering the gap")
+
+    assert not run.warnings.filter(
+        warning_type=WarningType.ON_CALL_SERVER_SHORTAGE, resolved=False
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_filling_a_slot_still_enforces_eligibility(configured_staff):
+    """Manual does not mean unchecked - a double-booking is still refused."""
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.workflow import fill_assignment
+
+    run, show = _shortage_run(configured_staff)
+    template = ShiftTemplate.objects.get(code="on-call-server")
+    if run.assignments.filter(shift_template=template).exists():
+        pytest.skip("no shortage produced for this fixture")
+    already_working = run.assignments.filter(show=show).first().employee
+
+    with pytest.raises(ValidationError):
+        fill_assignment(run, show, template, already_working, "double booking attempt")
+
+
+@pytest.mark.django_db
+def test_a_position_that_is_already_filled_cannot_be_filled_again(configured_staff):
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.workflow import fill_assignment
+
+    show = make_show()
+    make_all_available(configured_staff, show.date)
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+    template = ShiftTemplate.objects.get(code="lead-server")
+    someone = Employee.objects.filter(employee_roles__role__name="Server", active=True).first()
+
+    with pytest.raises(ValidationError, match="already filled"):
+        fill_assignment(run, show, template, someone, "should be refused")

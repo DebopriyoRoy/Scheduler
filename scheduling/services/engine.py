@@ -108,6 +108,25 @@ class Candidate:
     capability_level: int
 
 
+def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, datetime]:
+    """Shift window for this role on this show, anchored to the show's own
+    doors-open/wrap-up times rather than a fixed template clock time.
+
+    Module level so that filling a slot by hand starts from the same window the
+    generator would have produced, instead of a second implementation drifting from it.
+    """
+    if template.code == "fifty-fifty":
+        start = datetime.combine(show.date, FIFTY_FIFTY_START_TIME, tzinfo=LOCAL_TIMEZONE)
+        end = datetime.combine(show.date, FIFTY_FIFTY_END_TIME, tzinfo=LOCAL_TIMEZONE)
+        return start, end
+    show_end_date = show.date if show.end_time > show.start_time else show.date + timedelta(days=1)
+    doors = datetime.combine(show.date, show.start_time, tzinfo=LOCAL_TIMEZONE)
+    wrap = datetime.combine(show_end_date, show.end_time, tzinfo=LOCAL_TIMEZONE)
+    start_offset = ROLE_START_OFFSET_MINUTES.get(template.code, DEFAULT_START_OFFSET_MINUTES)
+    end_offset = ROLE_END_OFFSET_MINUTES.get(template.code, DEFAULT_END_OFFSET_MINUTES)
+    return doors - timedelta(minutes=start_offset), wrap + timedelta(minutes=end_offset)
+
+
 SHORTAGE_TYPES = {
     ("Server", AssignmentType.CONFIRMED): WarningType.SERVER_SHORTAGE,
     ("Server", AssignmentType.ON_CALL): WarningType.ON_CALL_SERVER_SHORTAGE,
@@ -329,7 +348,39 @@ class SchedulingEngine:
             ScheduleRunStatus.NEEDS_REVIEW if needs_review else ScheduleRunStatus.GENERATED
         )
         schedule_run.save(update_fields=["status"])
+        self._supersede_earlier_runs(schedule_run)
         return schedule_run
+
+    @staticmethod
+    def _supersede_earlier_runs(schedule_run: ScheduleRun) -> int:
+        """Retire older runs covering exactly this period.
+
+        Regenerating a period used to leave the previous attempt sitting alongside the
+        new one, both saying "Needs review", with nothing to tell you which was current
+        beyond the run number. SUPERSEDED_SOURCE_DATA already existed for this and was
+        read by the schedules page, but nothing ever set it.
+
+        Only an identical start/end range is retired. Superseding anything that merely
+        overlaps would let a single-day regeneration quietly retire the month around it.
+
+        A run that has been sent to Square is never touched: the shifts are live there,
+        so the record that explains them has to stay current. Approved runs are retired
+        like any other - approval is a local decision, and the newer roster replaces it.
+        """
+        stale = (
+            ScheduleRun.objects.filter(
+                start_date=schedule_run.start_date,
+                end_date=schedule_run.end_date,
+            )
+            .exclude(pk=schedule_run.pk)
+            .exclude(
+                status__in=(
+                    ScheduleRunStatus.SYNCED_TO_SQUARE,
+                    ScheduleRunStatus.SUPERSEDED_SOURCE_DATA,
+                )
+            )
+        )
+        return stale.update(status=ScheduleRunStatus.SUPERSEDED_SOURCE_DATA)
 
     def _enforce_minimum_server_floor(
         self,
@@ -392,22 +443,7 @@ class SchedulingEngine:
         )
 
     def _datetimes(self, show: Show, template: ShiftTemplate) -> tuple[datetime, datetime]:
-        """Shift window for this role on this show, anchored to the show's own
-        doors-open/wrap-up times rather than a fixed template clock time."""
-        if template.code == "fifty-fifty":
-            start = datetime.combine(show.date, FIFTY_FIFTY_START_TIME, tzinfo=LOCAL_TIMEZONE)
-            end = datetime.combine(show.date, FIFTY_FIFTY_END_TIME, tzinfo=LOCAL_TIMEZONE)
-            return start, end
-        show_end_date = (
-            show.date if show.end_time > show.start_time else show.date + timedelta(days=1)
-        )
-        doors = datetime.combine(show.date, show.start_time, tzinfo=LOCAL_TIMEZONE)
-        wrap = datetime.combine(show_end_date, show.end_time, tzinfo=LOCAL_TIMEZONE)
-        start_offset = ROLE_START_OFFSET_MINUTES.get(template.code, DEFAULT_START_OFFSET_MINUTES)
-        end_offset = ROLE_END_OFFSET_MINUTES.get(template.code, DEFAULT_END_OFFSET_MINUTES)
-        start = doors - timedelta(minutes=start_offset)
-        end = wrap + timedelta(minutes=end_offset)
-        return start, end
+        return shift_window_for(show, template)
 
     def _allocate_globally(
         self,
@@ -505,7 +541,7 @@ class SchedulingEngine:
             # for rather than restarting the sequence blindly.
             rotation_rank = {}
             if slot.template.role.name == "50/50":
-                ordered = rotation.ordered_candidates({c.display_name for c in live_candidates})
+                ordered = rotation.ordered_candidates({c.first_name for c in live_candidates})
                 rotation_rank = {name: i for i, name in enumerate(ordered)}
 
             selected = max(
@@ -513,14 +549,14 @@ class SchedulingEngine:
                 key=lambda e: (
                     allocator.score(e, slot, remaining[e.id], max_shift_count),
                     -allocator.totals_for(e.id).shift_count,
-                    -rotation_rank.get(e.display_name, 0),
+                    -rotation_rank.get(e.first_name, 0),
                     e.display_name.casefold(),
                 ),
             )
             reason = self._allocation_reason(allocator, selected, slot, len(live_candidates))
             if slot.template.role.name == "50/50":
                 rotation.record_assignment(
-                    selected.display_name, both_eligible=len(live_candidates) == 2
+                    selected.first_name, both_eligible=len(live_candidates) == 2
                 )
 
             self._save_assignment(schedule_run, slot.show, slot.template, selected, reason)
