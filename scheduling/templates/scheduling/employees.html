@@ -109,7 +109,7 @@
           <td class="text-center small text-nowrap {% if cell.unavailable %}table-secondary text-secondary{% elif cell.blank %}table-light{% endif %}">
             {% if cell.blank %}<span class="text-secondary">&mdash;</span>
             {% elif cell.unavailable %}off
-            {% else %}{{ cell.text }}{% endif %}
+            {% else %}{% for text in cell.texts %}<div>{{ text }}</div>{% endfor %}{% endif %}
           </td>
         {% endfor %}
         <td>{% if row.square_mapped %}<span class="badge text-bg-light border">Mapped</span>{% else %}<span class="text-secondary small">Not mapped</span>{% endif %}</td>

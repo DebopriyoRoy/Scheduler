@@ -284,3 +284,28 @@ def test_expired_sync_records_the_expiry(client, manager, jackie, monkeypatch, t
     status = square_session.session_status()
     assert status.connected is False
     assert status.expired is True
+
+
+def test_both_windows_show_in_one_weekday_cell(client, manager, jackie):
+    """Two windows on the same day are two rows in the database and both must show.
+
+    Khrystyna works 11:00-16:00 and again 18:00-23:00. Showing only the first made
+    her look like daytime-only staff who could never work an evening show.
+    """
+    thursday = _next_weekday(3, date.today())
+    for start, end in (("11:00", "16:00"), ("18:00", "23:00")):
+        EmployeeAvailability.objects.create(
+            employee=jackie,
+            date=thursday,
+            availability_type=AvailabilityType.AVAILABLE_WINDOW,
+            start_time=start,
+            end_time=end,
+            source=SQUARE_AVAILABILITY_SOURCE,
+        )
+
+    client.force_login(manager)
+    html = client.get(reverse("employees")).content.decode()
+
+    cell = _cell(html, "Jackie Pynn", "Thu")
+    assert "11:00-16:00" in cell
+    assert "18:00-23:00" in cell

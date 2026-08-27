@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 
 from scheduling.integrations.square_availability.base import (
     AvailabilityState,
@@ -103,49 +103,70 @@ def _resolve_window(match: re.Match) -> tuple[time, time] | None:
 
 @dataclass(frozen=True)
 class WeeklyGrid:
-    """One row per person: weekday index -> cell text as Square rendered it."""
+    """Per person, per weekday, every availability cell Square rendered.
 
-    rows: dict[str, dict[int, str]]
+    A list rather than a single string because one person can hold several windows on
+    the same weekday - Khrystyna works 11:00-16:00 and again 18:00-23:00 - and Square
+    shows each as its own row.
+    """
+
+    rows: dict[str, dict[int, list[str]]]
 
     def names(self) -> list[str]:
         return sorted(self.rows)
 
 
-def parse_cell(cell: str) -> tuple[AvailabilityState, time | None, time | None]:
-    """Turn one grid cell into a state and, where given, a window.
+def parse_cells(
+    texts: Sequence[str],
+) -> list[tuple[AvailabilityState, time | None, time | None]]:
+    """Everything Square holds for one person on one weekday.
 
-    An empty cell means Square holds nothing for that weekday. That is UNKNOWN, not
-    "unavailable": the two are different, and treating a gap in the record as a refusal
-    would quietly make people unschedulable.
+    Returns one entry per window, because a day with two windows is two facts and
+    collapsing them loses one. An empty list of texts means Square holds nothing,
+    which is UNKNOWN rather than "unavailable": both end unschedulable, but only one
+    of them is worth asking a person about.
     """
-    text = (cell or "").strip()
-    if not text:
-        return AvailabilityState.UNKNOWN, None, None
+    all_day = False
+    unavailable = False
+    windows: list[tuple[time, time]] = []
 
-    lowered = text.lower()
-    if "unavailable" in lowered or "not available" in lowered:
-        return AvailabilityState.UNAVAILABLE, None, None
+    for text in texts:
+        cleaned = (text or "").strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if "unavailable" in lowered or "not available" in lowered:
+            unavailable = True
+            continue
+        if "all day" in lowered:
+            all_day = True
+            continue
+        for match in WINDOW.finditer(cleaned):
+            resolved = _resolve_window(match)
+            if resolved:
+                windows.append(resolved)
 
-    # "All day" is checked before the window pattern: the words carry no digits, but
-    # a cell can hold both, and the explicit statement should win.
-    if "all day" in lowered:
-        return AvailabilityState.AVAILABLE_ALL_DAY, None, None
-
-    windows = [w for w in (_resolve_window(m) for m in WINDOW.finditer(text)) if w]
+    # "All day" subsumes any window stated alongside it.
+    if all_day:
+        return [(AvailabilityState.AVAILABLE_ALL_DAY, None, None)]
     if windows:
-        # A split day ("10 – 2 pm, 5 – 9 pm") has to collapse to one window, because
-        # one record holds one. Take the longest: it is the most useful of the two and
-        # never claims a minute Square did not give, whereas spanning them end to end
-        # would invent availability across the gap.
-        start, end = max(windows, key=lambda w: (datetime.combine(date.min, w[1])
-                                                 - datetime.combine(date.min, w[0])))
-        return AvailabilityState.AVAILABLE_WINDOW, start, end
+        return [
+            (AvailabilityState.AVAILABLE_WINDOW, start, end)
+            for start, end in sorted(set(windows))
+        ]
+    if unavailable:
+        return [(AvailabilityState.UNAVAILABLE, None, None)]
+    return [(AvailabilityState.UNKNOWN, None, None)]
 
-    if "available" in lowered:
-        # Marked available, but Square gave no window we could read. Say so rather
-        # than inventing one.
-        return AvailabilityState.UNKNOWN, None, None
-    return AvailabilityState.UNKNOWN, None, None
+
+def parse_cell(cell: str) -> tuple[AvailabilityState, time | None, time | None]:
+    """The first thing Square holds in one cell.
+
+    A single-value view of parse_cells, kept for callers that can only carry one
+    window. Anything that stores availability should use parse_cells instead, or it
+    silently discards a person's second shift window.
+    """
+    return parse_cells([cell])[0]
 
 
 def fetch_weekly_grid(headless: bool = True) -> WeeklyGrid:
@@ -177,30 +198,73 @@ def fetch_weekly_grid(headless: bool = True) -> WeeklyGrid:
         finally:
             context.close()
 
+    return build_grid(raw or [])
+
+
+def _looks_like_a_name(text: str) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    if lowered in WEEKDAY_HEADERS or lowered in ("team member", "name"):
+        return False
+    if lowered.startswith(("available", "unavailable", "not available")):
+        return False
+    # A wrapped row can leave availability text where the name belongs. Treating that
+    # as a person produces a phantom nobody can match.
+    return not WINDOW.search(text)
+
+
+def build_grid(raw: Sequence[Sequence[str]]) -> WeeklyGrid:
+    """Turn the dashboard's rows into per-person, per-weekday cells.
+
+    Square gives a person's first window a row carrying their name, and every further
+    window a row with **no name cell at all** - not an empty one, absent. So a
+    continuation row is one cell shorter and every weekday sits one position to the
+    left. Reading both row shapes at fixed positions puts Yana's Friday evening on a
+    Monday; the offset has to be derived from the row's own width.
+
+    Skipping the nameless rows outright, as this did before, silently dropped a second
+    window for everyone who has one.
+    """
     header_index: dict[int, int] = {}
-    rows: dict[str, dict[int, str]] = {}
-    for cells in raw or []:
+    rows: dict[str, dict[int, list[str]]] = {}
+    current_name: str | None = None
+
+    for cells in raw:
         if not cells or not any(cells):
             continue
         lowered = [c.lower() for c in cells]
-        if not header_index and any(h in lowered for h in WEEKDAY_HEADERS):
-            for position, value in enumerate(lowered):
-                if value in WEEKDAY_HEADERS:
-                    header_index[position] = WEEKDAY_HEADERS.index(value)
+        if any(header in lowered for header in WEEKDAY_HEADERS):
+            # The header repeats as the grid scrolls. Capture the column order from
+            # the first, then skip every occurrence.
+            if not header_index:
+                for position, value in enumerate(lowered):
+                    if value in WEEKDAY_HEADERS:
+                        header_index[position] = WEEKDAY_HEADERS.index(value)
             continue
         if not header_index:
             continue
-        name = cells[0].strip()
-        if not name or name.lower() in WEEKDAY_HEADERS:
+
+        # Named rows carry one cell more than there are weekdays; continuation rows
+        # carry exactly as many. Anything else is a layout this cannot read safely.
+        offset = len(cells) - len(header_index)
+        if offset not in (0, 1):
             continue
-        # A wrapped row can leave a cell of availability text where the name belongs.
-        # Treating that as a person produces a phantom nobody can match.
-        if WINDOW.search(name) or name.lower().startswith(("available", "unavailable")):
+
+        if offset == 1:
+            name = cells[0].strip()
+            if not _looks_like_a_name(name):
+                continue
+            current_name = name
+            rows.setdefault(current_name, {})
+        elif current_name is None:
             continue
-        rows[name] = {
-            weekday: (cells[position] if position < len(cells) else "")
-            for position, weekday in header_index.items()
-        }
+
+        for weekday in range(len(header_index)):
+            position = offset + weekday
+            text = cells[position].strip() if position < len(cells) else ""
+            if text:
+                rows[current_name].setdefault(weekday, []).append(text)
 
     if not rows:
         raise SquareSessionError(
@@ -276,19 +340,22 @@ class LiveSquareAvailabilityProvider(BaseAvailabilityProvider):
             week = grid.rows[square_name]
             current = start_date
             while current <= end_date:
-                state, start_time, end_time = parse_cell(week.get(current.weekday(), ""))
-                records.append(
-                    build_normalized_record(
-                        employee_id=employee.id,
-                        employee_name=employee.display_name,
-                        square_team_member_id=mappings.get(employee.id, ""),
-                        record_date=current,
-                        state=state,
-                        start_time=start_time,
-                        end_time=end_time,
-                        source_provider=self.provider_name,
-                        source_environment="PRODUCTION",
+                # One record per window. A person with both a lunch and an evening
+                # window gets two, and the eligibility check passes if either covers
+                # the shift.
+                for state, start_time, end_time in parse_cells(week.get(current.weekday(), [])):
+                    records.append(
+                        build_normalized_record(
+                            employee_id=employee.id,
+                            employee_name=employee.display_name,
+                            square_team_member_id=mappings.get(employee.id, ""),
+                            record_date=current,
+                            state=state,
+                            start_time=start_time,
+                            end_time=end_time,
+                            source_provider=self.provider_name,
+                            source_environment="PRODUCTION",
+                        )
                     )
-                )
                 current += timedelta(days=1)
         return records
