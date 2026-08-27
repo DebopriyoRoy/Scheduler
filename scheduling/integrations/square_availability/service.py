@@ -28,6 +28,12 @@ from scheduling.models import (
     SquareAvailabilitySyncRun,
 )
 
+# The seventeen service staff the roster was seeded with, under the short names they
+# were seeded under. Kept only so the historical fixtures that reference it still read;
+# nothing selects staff by it any more. Square now supplies the roster, and staff are
+# recognised by having a role rather than by appearing in a list nobody remembers to
+# update - a hire in Square used to be invisible here until someone edited this file,
+# and renaming anyone to their full name would have silently emptied it.
 ROSTER_EMPLOYEE_NAMES = [
     "Joleen Dickson",
     "Jackie Pynn",
@@ -47,6 +53,25 @@ ROSTER_EMPLOYEE_NAMES = [
     "Emily",
     "Maks Plsky",
 ]
+
+
+def roster_employees():
+    """Everyone this application can actually put on a shift.
+
+    Square's team includes the kitchen, cleaners, managers and the owner. They are on
+    the roster so the two systems can be compared, but they hold no scheduling role,
+    and counting their empty availability would drag the completeness figure down
+    while telling nobody anything.
+    """
+    return (
+        Employee.objects.filter(
+            active=True,
+            excluded_from_automatic_scheduling=False,
+            employee_roles__active=True,
+        )
+        .distinct()
+        .order_by("display_name")
+    )
 
 
 @dataclass
@@ -168,15 +193,9 @@ class SquareAvailabilitySyncService:
         )
 
         # Retrieve active scheduling employees
-        active_employees = list(
-            Employee.objects.filter(
-                active=True,
-                excluded_from_automatic_scheduling=False,
-                display_name__in=ROSTER_EMPLOYEE_NAMES,
-            ).order_by("display_name")
-        )
+        active_employees = list(roster_employees())
 
-        sync_run.employees_requested = len(ROSTER_EMPLOYEE_NAMES)
+        sync_run.employees_requested = len(active_employees)
         sync_run.employees_found = len(active_employees)
 
         records, provider_used = self.fetch_with_fallback(start_date, end_date)
@@ -408,7 +427,7 @@ class SquareAvailabilitySyncService:
 
         return AvailabilityAnalysisSummary(
             sync_run=sync_run,
-            total_requested=len(ROSTER_EMPLOYEE_NAMES),
+            total_requested=len(active_employees),
             total_found=len(active_employees),
             total_combinations=total_combinations,
             known_combinations=known_combinations,
