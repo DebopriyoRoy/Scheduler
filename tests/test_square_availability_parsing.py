@@ -63,15 +63,20 @@ def test_empty_cell_is_unknown_not_unavailable():
     assert parse_cell("   ")[0] == AvailabilityState.UNKNOWN
 
 
-def test_split_day_collapses_to_the_longest_window():
-    """One record holds one window, so a split day has to lose something.
+def test_a_split_day_keeps_both_windows():
+    """Two windows in one cell are two facts; storage holds a row for each.
 
-    Losing the shorter half understates availability. Spanning 10:00-21:00 would
-    invent three hours in the middle that the person never offered.
+    Spanning them as 10:00-21:00 would invent three hours in the middle that the
+    person never offered, and keeping only one silently removes a shift they can
+    work. parse_cell returns the first of them for callers that can carry only one.
     """
-    state, start, end = parse_cell("Available\n10 – 2 pm, 5 – 9 pm")
-    assert state == AvailabilityState.AVAILABLE_WINDOW
-    assert (start, end) == (time(10, 0), time(14, 0))
+    from scheduling.integrations.square_availability.live_provider import parse_cells
+
+    assert parse_cells(["Available\n10 – 2 pm, 5 – 9 pm"]) == [
+        (AvailabilityState.AVAILABLE_WINDOW, time(10, 0), time(14, 0)),
+        (AvailabilityState.AVAILABLE_WINDOW, time(17, 0), time(21, 0)),
+    ]
+    assert parse_cell("Available\n10 – 2 pm, 5 – 9 pm")[1] == time(10, 0)
 
 
 def test_ambiguous_bare_window_is_not_guessed():

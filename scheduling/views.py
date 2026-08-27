@@ -130,6 +130,14 @@ def dashboard(request):
 # two-week publishing lead plus the Christmas season.
 AVAILABILITY_SYNC_DAYS = 126
 
+# How far *back* a sync also reaches. A sync only rewrites the dates it is given, so
+# rows dated before today were never revisited and kept whatever an older source had
+# put there - Yana carried a 14:30-00:00 Tuesday from the hand-typed fixture while
+# Square says 14:30-23:59, purely because that row fell one day before the range
+# began. Reaching back a month lets a corrected reader repair recent history rather
+# than leave it stranded.
+AVAILABILITY_SYNC_BACKFILL_DAYS = 30
+
 
 @login_required
 def employees(request):
@@ -202,21 +210,34 @@ def employees(request):
             return 1
         return 3  # entered by hand
 
-    windows: dict[int, dict[int, str]] = {e.id: {} for e in staff}
-    best: dict[tuple[int, int], tuple[int, datetime, date]] = {}
-    entries = (
+    entries = list(
         EmployeeAvailability.objects.filter(employee__in=staff)
         .exclude(source__in=RETIRED_AVAILABILITY_SOURCES)
         .order_by("date")
     )
 
+    winners: dict[tuple[int, int], tuple[int, datetime, date]] = {}
     for entry in entries:
         key = (entry.employee_id, entry.date.weekday())
         rank = (authority(entry), entry.updated_at, entry.date)
-        if key in best and best[key] >= rank:
+        if key not in winners or rank > winners[key]:
+            winners[key] = rank
+
+    # The winning rank only settles *which* source and date to believe, and then every
+    # row on that date is kept. Ranking row against row would break the case this page
+    # exists to show: two windows on one weekday are written by the same sync a
+    # microsecond apart, so the later write would evict the earlier one and Khrystyna
+    # would lose the evening that lets her work a show at all.
+    windows: dict[int, dict[int, list[str]]] = {e.id: {} for e in staff}
+    for entry in entries:
+        key = (entry.employee_id, entry.date.weekday())
+        winner = winners.get(key)
+        if winner is None or (authority(entry), entry.date) != (winner[0], winner[2]):
             continue
-        best[key] = rank
-        windows[entry.employee_id][entry.date.weekday()] = describe(entry)
+        held = windows[entry.employee_id].setdefault(entry.date.weekday(), [])
+        text = describe(entry)
+        if text and text not in held:
+            held.append(text)
 
     live_sources = set(
         EmployeeAvailability.objects.filter(employee__in=staff)
@@ -235,15 +256,15 @@ def employees(request):
         pattern = []
         known = 0
         for index, label in enumerate(WEEKDAYS):
-            text = windows[employee.id].get(index) or ""
-            if text:
+            texts = sorted(windows[employee.id].get(index) or [])
+            if texts:
                 known += 1
             pattern.append(
                 {
                     "day": label,
-                    "text": text,
-                    "unavailable": text == "Unavailable",
-                    "blank": not text,
+                    "texts": texts,
+                    "unavailable": texts == ["Unavailable"],
+                    "blank": not texts,
                 }
             )
         rows.append(
@@ -277,6 +298,7 @@ def employees(request):
             # invisibility is what let transcribed hours pass as live ones.
             "using_fallback": FALLBACK_AVAILABILITY_SOURCE in live_sources,
             "sync_days": AVAILABILITY_SYNC_DAYS,
+            "backfill_days": AVAILABILITY_SYNC_BACKFILL_DAYS,
         },
     )
 
@@ -314,8 +336,8 @@ def _sync_availability_from_square(request):
     """
     from scheduling.services.square_pull import SquarePullError, run_availability_sync
 
-    start = date.today()
-    end = start + timedelta(days=AVAILABILITY_SYNC_DAYS)
+    start = date.today() - timedelta(days=AVAILABILITY_SYNC_BACKFILL_DAYS)
+    end = date.today() + timedelta(days=AVAILABILITY_SYNC_DAYS)
 
     try:
         result = run_availability_sync(start, end)

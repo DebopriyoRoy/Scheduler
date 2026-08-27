@@ -71,10 +71,19 @@
 
 {% if no_availability %}
   <div class="alert alert-warning">
-    <strong>No availability on file:</strong> {{ no_availability|join:", " }}.
-    The engine cannot schedule anyone it has no availability for, so these staff are
-    never considered. Add their hours on the
-    <a href="{% url 'availability' %}">availability page</a>.
+    <strong>{{ no_availability|length }} with no availability on file.</strong>
+    The engine cannot schedule anyone it has no hours for, so these staff are never
+    considered. Most are kitchen, cleaning, management or office staff who hold no
+    scheduling role and are not meant to be rostered; the ones that matter are anyone
+    who should be working the floor.
+    <details class="mt-2">
+      <summary class="small">Show the names</summary>
+      <p class="small mb-0 mt-2">{{ no_availability|join:", " }}.</p>
+    </details>
+    <div class="mt-2 small">
+      Add hours on the <a href="{% url 'availability' %}">availability page</a>, or
+      have them set it in Square and press <em>Sync availability from Square</em>.
+    </div>
   </div>
 {% endif %}
 
@@ -100,7 +109,7 @@
         </td>
         <td>
           {% for item in row.roles %}
-            <span class="badge text-bg-light border">{{ item.role.name }} L{{ item.capability_level }}</span>
+            <span class="badge text-bg-light border role-{{ item.role.name|slugify }}">{{ item.role.name }} <span class="opacity-75">L{{ item.capability_level }}</span></span>
           {% empty %}
             <span class="text-secondary small">No roles</span>
           {% endfor %}
@@ -109,7 +118,7 @@
           <td class="text-center small text-nowrap {% if cell.unavailable %}table-secondary text-secondary{% elif cell.blank %}table-light{% endif %}">
             {% if cell.blank %}<span class="text-secondary">&mdash;</span>
             {% elif cell.unavailable %}off
-            {% else %}{{ cell.text }}{% endif %}
+            {% else %}{% for text in cell.texts %}<div>{{ text }}</div>{% endfor %}{% endif %}
           </td>
         {% endfor %}
         <td>{% if row.square_mapped %}<span class="badge text-bg-light border">Mapped</span>{% else %}<span class="text-secondary small">Not mapped</span>{% endif %}</td>
@@ -126,9 +135,9 @@
   The weekly pattern is what Square currently holds for that weekday. A dash means
   Square holds nothing for that day, which is not the same as being unavailable
   &mdash; the engine treats an unknown day as unschedulable either way, but only one
-  of the two is worth asking someone about. Syncing reads
-  {{ sync_days }} days forward and replaces only what a previous sync wrote; hours
-  entered by hand on the availability page always survive.
+  of the two is worth asking someone about. Syncing reads {{ sync_days }} days forward
+  and {{ backfill_days }} days back, and replaces only what a previous sync wrote;
+  hours entered by hand on the availability page always survive.
 </p>
 
 <script>

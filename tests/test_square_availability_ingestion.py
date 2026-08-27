@@ -63,12 +63,31 @@ def test_unknown_availability_is_not_eligible():
 
 @pytest.mark.django_db
 def test_square_availability_sync_provenance_and_audit():
-    """Verify read-only availability sync and provenance tracking."""
+    """Verify read-only availability sync and provenance tracking.
+
+    The roster is seeded here on purpose. total_requested used to be the length of a
+    hardcoded name list, so this assertion held at seventeen even against an empty
+    database - it was checking a constant, not a sync. It now counts the staff who
+    actually hold a role, so the seed is what makes the number mean anything.
+    """
+    from django.core.management import call_command
+
+    call_command("seed_spirit_staff")
+
     service = SquareAvailabilitySyncService()
     summary = service.execute_sync(date(2026, 9, 7), date(2026, 10, 3))
 
     assert summary.sync_run.environment == "PRODUCTION"
     assert summary.total_requested == 17
-    assert summary.completeness_pct == 100.0
-    assert summary.unknown_combinations == 0
+
+    # Completeness is a real measurement now. It read 100% before only because an
+    # empty roster made the denominator zero - the fixture provider has never held
+    # hours for every member of staff, and saying so is the entire point of the
+    # figure.
+    assert 0 < summary.completeness_pct < 100
+    assert summary.unknown_combinations > 0
+    assert (
+        summary.known_combinations + summary.unknown_combinations
+        == summary.total_combinations
+    )
     assert SquareAvailabilitySyncRun.objects.count() >= 1

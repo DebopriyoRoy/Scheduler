@@ -212,7 +212,10 @@ def test_expired_session_offers_connect_not_sync(client, manager, jackie, monkey
     html = client.get(reverse("employees")).content.decode()
 
     assert "Connect to Square" in html
-    assert "Sync availability from Square" not in html
+    # The control, not the phrase: the page explains elsewhere in prose what the sync
+    # button is called, and asserting on that text made this fail for a copy edit.
+    assert 'id="sync-button"' not in html
+    assert 'id="connect-button"' in html
     assert "Square signed this application out." in html
 
 
@@ -284,3 +287,58 @@ def test_expired_sync_records_the_expiry(client, manager, jackie, monkeypatch, t
     status = square_session.session_status()
     assert status.connected is False
     assert status.expired is True
+
+
+def test_both_windows_show_in_one_weekday_cell(client, manager, jackie):
+    """Two windows on the same day are two rows in the database and both must show.
+
+    Khrystyna works 11:00-16:00 and again 18:00-23:00. Showing only the first made
+    her look like daytime-only staff who could never work an evening show.
+    """
+    thursday = _next_weekday(3, date.today())
+    for start, end in (("11:00", "16:00"), ("18:00", "23:00")):
+        EmployeeAvailability.objects.create(
+            employee=jackie,
+            date=thursday,
+            availability_type=AvailabilityType.AVAILABLE_WINDOW,
+            start_time=start,
+            end_time=end,
+            source=SQUARE_AVAILABILITY_SOURCE,
+        )
+
+    client.force_login(manager)
+    html = client.get(reverse("employees")).content.decode()
+
+    cell = _cell(html, "Jackie Pynn", "Thu")
+    assert "11:00-16:00" in cell
+    assert "18:00-23:00" in cell
+
+
+def test_sync_reaches_back_as_well_as_forward(client, manager, jackie, monkeypatch):
+    """A sync only rewrites the dates it is given.
+
+    Rows written before today were never revisited, so a window recorded as
+    14:30-00:00 by an earlier, broken parser sat uncorrected because its date fell one
+    day before the range began.
+    """
+    from datetime import date as date_cls
+
+    from scheduling.integrations import square_session
+    from scheduling.services import square_pull
+    from scheduling.views import AVAILABILITY_SYNC_BACKFILL_DAYS, AVAILABILITY_SYNC_DAYS
+
+    square_session.record_session("Test", square_session.DEFAULT_AVAILABILITY_URL)
+    seen = {}
+
+    def capture(start, end):
+        seen["start"], seen["end"] = start, end
+        return {"live": True, "known": 1, "total": 1, "completeness": 100.0}
+
+    monkeypatch.setattr(square_pull, "run_availability_sync", capture)
+
+    client.force_login(manager)
+    client.post(reverse("employees"))
+
+    assert seen["start"] < date_cls.today(), "the sync never revisits older rows"
+    assert (date_cls.today() - seen["start"]).days == AVAILABILITY_SYNC_BACKFILL_DAYS
+    assert (seen["end"] - date_cls.today()).days == AVAILABILITY_SYNC_DAYS
