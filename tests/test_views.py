@@ -125,7 +125,7 @@ def test_a_newer_unknown_clears_hours_from_a_retired_source(client, manager):
     client.force_login(manager)
     body = client.get(reverse("employees")).content.decode()
     assert _week(body, "Butros")[0] in ("", "—", "&mdash;")
-    assert "No availability on file" in body
+    assert "no availability on file" in body.lower()
 
 
 @pytest.mark.django_db

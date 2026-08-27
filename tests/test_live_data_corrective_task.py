@@ -80,8 +80,20 @@ def test_events_from_html_parser():
 
 
 @pytest.mark.django_db
-def test_sync_preview_detects_pilot_shift_match():
+def test_sync_preview_detects_pilot_shift_match(monkeypatch):
+    """The preview matches an assignment to a draft shift Square already holds.
+
+    The location is set here rather than left to the environment. This test used to
+    read SQUARE_LOCATION_ID out of whatever .env the developer happened to have, so it
+    passed on the machine it was written on and failed on a fresh checkout with
+    "No active Square Production location selected" - which reads like the application
+    is broken rather than the test being under-specified.
+    """
     from unittest.mock import MagicMock
+
+    monkeypatch.setenv("SQUARE_ENVIRONMENT", "production")
+    monkeypatch.setenv("SQUARE_PRODUCTION_ACCESS_TOKEN", "test-token-not-a-real-credential")
+    monkeypatch.setenv("SQUARE_LOCATION_ID", "TEST-LOCATION-ID")
     run = ScheduleRun.objects.create(
         start_date=date(2026, 9, 7),
         end_date=date(2026, 10, 3),

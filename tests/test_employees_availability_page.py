@@ -212,7 +212,10 @@ def test_expired_session_offers_connect_not_sync(client, manager, jackie, monkey
     html = client.get(reverse("employees")).content.decode()
 
     assert "Connect to Square" in html
-    assert "Sync availability from Square" not in html
+    # The control, not the phrase: the page explains elsewhere in prose what the sync
+    # button is called, and asserting on that text made this fail for a copy edit.
+    assert 'id="sync-button"' not in html
+    assert 'id="connect-button"' in html
     assert "Square signed this application out." in html
 
 
