@@ -57,6 +57,11 @@ def staffing_requirements_for(show: Show) -> tuple[list[StaffingRequirement], bo
     # The rule belongs here, beside the rest of the crew, not in a per-show flag that
     # nothing maintains.
     requirements = [
+        # One Server Manager on every show, in from mid-afternoon. Whether anyone can
+        # actually take it is the engine's problem: if the manager is on approved time
+        # off it reports a shortage like any other position, rather than pretending the
+        # show does not need one.
+        StaffingRequirement("Server Manager", 1, 0),
         StaffingRequirement("Server", servers, on_call_servers_for(servers)),
         StaffingRequirement("Bartender", bartenders, on_call_bartenders_for(bartenders)),
         StaffingRequirement("Busser", bussers, 0),

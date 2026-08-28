@@ -131,7 +131,12 @@ class WarningType(models.TextChoices):
         "INSUFFICIENT_FAIRNESS_HISTORY",
         "Insufficient fairness history",
     )
+    SERVER_MANAGER_SHORTAGE = "SERVER_MANAGER_SHORTAGE", "Server manager shortage"
     ROLE_CONFIGURATION_ERROR = "ROLE_CONFIGURATION_ERROR", "Role configuration error"
+    SQUARE_OUT_OF_DATE = (
+        "SQUARE_OUT_OF_DATE",
+        "Square no longer matches this schedule",
+    )
     EVENT_STAFFING_REVIEW_REQUIRED = (
         "EVENT_STAFFING_REVIEW_REQUIRED",
         "Event staffing review required",
@@ -172,6 +177,10 @@ class Employee(models.Model):
     display_name = models.CharField(max_length=201, unique=True)
     active = models.BooleanField(default=True)
     square_team_member_id = models.CharField(max_length=100, blank=True, null=True, unique=True)
+    # Retained as an employment record only. Both fields once fed a scoring boost in
+    # the allocator and the fairness score; management's decision is that all servers
+    # rank equally, so nothing in scheduling reads them. Do not re-wire them into
+    # selection without being asked.
     spirit_only_employment = models.BooleanField(default=False)
     employment_priority = models.PositiveSmallIntegerField(default=0)
     excluded_from_automatic_scheduling = models.BooleanField(default=False)
@@ -1073,7 +1082,7 @@ class EmployeeSchedulingPreference(models.Model):
         decimal_places=2,
         blank=True,
         null=True,
-        help_text="Monthly target confirmed paid hours for Spirit-only priority staff.",
+        help_text="Monthly target confirmed paid hours.",
     )
     priority_enabled = models.BooleanField(default=True)
     preferred_role = models.ForeignKey(

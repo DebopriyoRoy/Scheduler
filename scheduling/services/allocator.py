@@ -32,7 +32,6 @@ WEIGHT_HOURS_DEFICIT = 0.50
 WEIGHT_OPPORTUNITY_SCARCITY = 0.20
 WEIGHT_SHIFT_COUNT_DEFICIT = 0.15
 WEIGHT_CARRY_IN_HISTORY = 0.12
-WEIGHT_SPIRIT_ONLY = 0.10
 WEIGHT_ROLE_PREFERENCE = 0.08
 WEIGHT_WEEKEND_BALANCE = 0.05
 
@@ -74,13 +73,11 @@ class GlobalAllocator:
     def __init__(
         self,
         targets: dict[int, Decimal],
-        spirit_only_ids: set[int],
         on_call_target_hours: dict[int, Decimal] | None = None,
         carry_in_hours: dict[int, Decimal] | None = None,
         preferred_role_ids: dict[int, int] | None = None,
     ):
         self.targets = targets
-        self.spirit_only_ids = spirit_only_ids
         self.on_call_targets = on_call_target_hours or {}
         self.totals: dict[int, RunningTotals] = {}
         self.carry_in_hours = carry_in_hours or {}
@@ -164,10 +161,10 @@ class GlobalAllocator:
         # stretch.
         score += WEIGHT_CARRY_IN_HISTORY * self.carry_in_fairness(employee.id)
 
-        # Spirit is these employees' only source of hours; the boost is capped and
-        # decays to nothing once they reach target, so it cannot monopolise.
-        if employee.id in self.spirit_only_ids and deficit > 0:
-            score += WEIGHT_SPIRIT_ONLY * min(deficit, 1.0)
+        # There is deliberately no term for who Spirit is an employee's only job.
+        # Olena and Jackie used to receive a capped boost here on that basis;
+        # management's decision is that every server competes on the same footing, so
+        # the only things separating them are hours worked, scarcity and rest.
 
         preferred = self.preferred_role_ids.get(employee.id)
         if preferred is not None and preferred == slot.template.role_id:

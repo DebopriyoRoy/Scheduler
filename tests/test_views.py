@@ -298,3 +298,147 @@ def test_removing_from_square_for_a_run_that_is_gone_does_not_raise_404(client, 
 
     assert response.status_code == 200
     assert b"no longer exists" in response.content
+
+
+@pytest.mark.django_db
+def test_a_blocked_run_shows_what_is_blocking_and_offers_a_way_through(client, manager):
+    """Removing the warnings screen left hard errors with no way to clear them.
+
+    Every hard error here is a shortage nobody eligible can fill, so "fill the slot"
+    is not always an available answer - without this the run could never be approved
+    and so could never reach Square.
+    """
+    from scheduling.models import (
+        ScheduleRunStatus,
+        SchedulingWarning,
+        WarningSeverity,
+        WarningType,
+    )
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    SchedulingWarning.objects.create(
+        schedule_run=run,
+        warning_type=WarningType.ON_CALL_SERVER_SHORTAGE,
+        severity=WarningSeverity.ERROR,
+        message="No eligible employee for On-call Server.",
+    )
+    body = client.get(reverse("schedule_detail", args=[run.pk])).content.decode()
+
+    assert "blocking approval" in body
+    assert "Accept" in body
+
+
+@pytest.mark.django_db
+def test_accepting_a_blocker_unblocks_approval_and_the_square_buttons(client, manager):
+    from scheduling.models import (
+        ScheduleRun,
+        ScheduleRunStatus,
+        SchedulingWarning,
+        WarningSeverity,
+        WarningType,
+    )
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    warning = SchedulingWarning.objects.create(
+        schedule_run=run,
+        warning_type=WarningType.SERVER_SHORTAGE,
+        severity=WarningSeverity.ERROR,
+        message="No eligible employee for Server 3.",
+    )
+    run.assignments.model.objects.none()  # run has no assignments; approval also needs some
+
+    client.post(
+        reverse("schedule_warning_resolve", args=[warning.pk]),
+        {"resolution_note": "running short that night, accepted"},
+        follow=True,
+    )
+    warning.refresh_from_db()
+    assert warning.resolved is True
+
+    body = client.get(reverse("schedule_detail", args=[run.pk])).content.decode()
+    assert "blocking approval" not in body
+    assert ScheduleRun.objects.get(pk=run.pk).status == ScheduleRunStatus.NEEDS_REVIEW
+
+
+@pytest.mark.django_db
+def test_a_clean_run_shows_no_blocking_panel_at_all(client, manager):
+    from scheduling.models import ScheduleRunStatus
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    body = client.get(reverse("schedule_detail", args=[run.pk])).content.decode()
+
+    assert "blocking approval" not in body
+
+
+@pytest.mark.django_db
+def test_the_square_buttons_appear_once_a_run_is_approved(client, manager):
+    from scheduling.models import ScheduleRunStatus
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.APPROVED)
+    body = client.get(reverse("schedule_detail", args=[run.pk])).content.decode()
+
+    assert "Square Production Sync" in body
+    assert "Sync to Sandbox" in body
+
+
+@pytest.mark.django_db
+def test_all_blockers_can_be_accepted_at_once(client, manager):
+    """A thin month can produce twenty unfillable shortages; one at a time is not
+    a workable gate."""
+    from scheduling.models import (
+        ScheduleRunStatus,
+        SchedulingWarning,
+        WarningSeverity,
+        WarningType,
+    )
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    for _ in range(5):
+        SchedulingWarning.objects.create(
+            schedule_run=run,
+            warning_type=WarningType.SERVER_SHORTAGE,
+            severity=WarningSeverity.ERROR,
+            message="No eligible employee.",
+        )
+
+    client.post(
+        reverse("schedule_warnings_accept_all", args=[run.pk]),
+        {"resolution_note": "short-staffed month, accepted by management"},
+        follow=True,
+    )
+
+    assert not run.warnings.filter(severity=WarningSeverity.ERROR, resolved=False).exists()
+    # the reason is on each one, not just recorded once
+    for warning in run.warnings.all():
+        assert warning.resolution_note == "short-staffed month, accepted by management"
+
+
+@pytest.mark.django_db
+def test_accepting_all_requires_a_reason(client, manager):
+    from scheduling.models import (
+        ScheduleRunStatus,
+        SchedulingWarning,
+        WarningSeverity,
+        WarningType,
+    )
+
+    client.force_login(manager)
+    run = _run(ScheduleRunStatus.NEEDS_REVIEW)
+    SchedulingWarning.objects.create(
+        schedule_run=run,
+        warning_type=WarningType.SERVER_SHORTAGE,
+        severity=WarningSeverity.ERROR,
+        message="No eligible employee.",
+    )
+
+    client.post(
+        reverse("schedule_warnings_accept_all", args=[run.pk]), {"resolution_note": "x"},
+        follow=True,
+    )
+
+    assert run.warnings.filter(severity=WarningSeverity.ERROR, resolved=False).exists()

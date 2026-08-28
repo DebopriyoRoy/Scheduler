@@ -154,13 +154,15 @@ def test_excel_csv_and_pdf_exports_are_complete(staff_and_config):
     ]
     assert workbook["Schedule"]["A2"].value.date() == show.date
     assert workbook["Schedule"]["C2"].value == show.title
-    assert workbook["Detailed Assignments"].max_row == 9
+    # header + 9 assignments: the six-plus-two crew plus the Server Manager.
+    assert workbook["Detailed Assignments"].max_row == 10
     detailed_rows = list(workbook["Detailed Assignments"].iter_rows(values_only=True))
     # Lead Server comes in 45 minutes before this show's doors (18:30) and leaves
     # 15 minutes after wrap (22:30).
-    lead_row = next(row for row in detailed_rows if row[3] == "Server" and row[5] == "17:45")
-    assert lead_row[6] == "22:45"
-    assert workbook["Employee Totals"].max_row == 18
+    lead_row = next(row for row in detailed_rows if row[3] == "Server" and row[5] == "15:00")
+    assert lead_row[6] == "21:00"
+    # header + 18 staff, the roster having gained the Server Manager.
+    assert workbook["Employee Totals"].max_row == 19
     assert "Forever Country" in detailed_schedule_csv(run)
     pdf = schedule_pdf_bytes(run)
     assert pdf.startswith(b"%PDF")
@@ -300,7 +302,7 @@ def test_demo_seed_is_idempotent_and_clearly_isolated():
     call_command("seed_schedule_demo", verbosity=0)
     assert Show.objects.count() == 6
     assert not Show.objects.exclude(source=Show.Source.DEMO).exists()
-    assert EmployeeAvailability.objects.count() == 102
+    assert EmployeeAvailability.objects.count() == 108
     assert not EmployeeAvailability.objects.exclude(source="DEMO").exists()
 
 

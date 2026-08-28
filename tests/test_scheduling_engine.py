@@ -79,20 +79,21 @@ def test_standard_buffer_show_has_required_coverage(configured_staff):
     assert count("Bartender", AssignmentType.ON_CALL) == 1
     assert run.assignments.filter(role__name="Busser").count() == 1
     assert run.assignments.filter(assignment_type=AssignmentType.FIFTY_FIFTY).count() == 1
-    assert run.assignments.values("employee_id").distinct().count() == 8
+    # Nine distinct people: the six-plus-two crew, plus the Server Manager.
+    assert run.assignments.values("employee_id").distinct().count() == 9
 
-    # Shift windows anchor to this show's own doors (18:30) and wrap (22:30), so the Lead
-    # Server comes in 45 minutes before doors and leaves 15 minutes after wrap.
+    # A half-six show runs on management's own call times, not on offsets from the
+    # curtain: Server 1 is told to come in at three and finish at nine.
     lead = run.assignments.get(shift_template__code="lead-server")
-    assert timezone.localtime(lead.start_datetime).time() == time(17, 45)
-    assert timezone.localtime(lead.end_datetime).time() == time(22, 45)
+    assert timezone.localtime(lead.start_datetime).time() == time(15, 0)
+    assert timezone.localtime(lead.end_datetime).time() == time(21, 0)
 
-    # On-call carries no setup buffer - exactly doors to wrap - and no paid hours.
+    # On-call still carries no paid hours, only standby hours.
     on_call = run.assignments.get(shift_template__code="on-call-server")
-    assert timezone.localtime(on_call.start_datetime).time() == time(18, 30)
-    assert timezone.localtime(on_call.end_datetime).time() == time(22, 30)
+    assert timezone.localtime(on_call.start_datetime).time() == time(18, 15)
+    assert timezone.localtime(on_call.end_datetime).time() == time(23, 0)
     assert on_call.scheduled_paid_hours == 0
-    assert on_call.on_call_hours == Decimal("4.00")
+    assert on_call.on_call_hours == Decimal("4.75")
 
     assert run.status == ScheduleRunStatus.GENERATED
 
@@ -335,17 +336,50 @@ def test_priority_never_overrides_unavailability_or_qualification(configured_sta
 
 
 @pytest.mark.django_db
-def test_olena_and_jackie_receive_soft_confirmed_opportunity(configured_staff):
+def test_spirit_only_employment_confers_no_scheduling_advantage(configured_staff):
+    """All servers rank equally - management's decision.
+
+    Olena and Jackie once received a capped boost because Spirit is their only
+    employer. Two candidates alike in every other respect must now score identically,
+    so the flag can never be what decides a shift.
+    """
+    from decimal import Decimal as D
+
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.allocator import GlobalAllocator, Slot
+    from scheduling.services.engine import shift_window_for
+
+    show = make_show(requires_50_50=False, start_time=time(18, 30))
+    flagged = Employee.objects.get(display_name="Olena")
+    plain = Employee.objects.get(display_name="Molly Rittwage")
+    assert flagged.spirit_only_employment is True
+    assert plain.spirit_only_employment is False
+
+    template = ShiftTemplate.objects.get(code="lead-server")
+    start, end = shift_window_for(show, template)
+    slot = Slot(
+        show=show, template=template, start=start, end=end,
+        hours=D("6.00"), is_on_call=False,
+    )
+    # Identical targets and carry-in: the flag is the only thing left between them.
+    allocator = GlobalAllocator(
+        {flagged.id: D("40.00"), plain.id: D("40.00")},
+        carry_in_hours={flagged.id: D("10.00"), plain.id: D("10.00")},
+    )
+    args = dict(remaining_opportunities=5, max_shift_count=3)
+    assert allocator.score(flagged, slot, **args) == allocator.score(plain, slot, **args)
+    assert not hasattr(allocator, "spirit_only_ids")
+
+
+@pytest.mark.django_db
+def test_the_selection_reason_no_longer_claims_a_priority(configured_staff):
+    """The audit trail must not advertise a rule the engine stopped applying."""
     show = make_show(requires_50_50=False)
     make_all_available(configured_staff, show.date)
-    run = SchedulingEngine().generate(show.date, show.date)
-    confirmed_server_names = set(
-        run.assignments.filter(
-            role__name="Server",
-            assignment_type=AssignmentType.CONFIRMED,
-        ).values_list("employee__display_name", flat=True)
-    )
-    assert {"Olena", "Jackie Pynn"}.issubset(confirmed_server_names)
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+    reasons = " ".join(run.assignments.values_list("selection_reason", flat=True))
+    assert "Spirit-only" not in reasons
+    assert reasons  # the run actually assigned somebody
 
 
 @pytest.mark.django_db
@@ -493,11 +527,13 @@ def test_office_warning_only_when_shift_times_overlap(configured_staff):
     show = make_show(requires_50_50=False)
     make_all_available(configured_staff, show.date)
     yana = Employee.objects.get(display_name="Yana")
+    # Ends before the earliest call time of the day (the Server Manager, at 14:00),
+    # so it genuinely clashes with nothing.
     OfficeAssignment.objects.create(
         employee=yana,
         date=show.date,
         start_time=time(9),
-        end_time=time(15),
+        end_time=time(13),
     )
     run = SchedulingEngine().generate(show.date, show.date)
     assert not run.warnings.filter(warning_type=WarningType.OFFICE_CONFLICT).exists()
@@ -561,13 +597,15 @@ def test_the_standard_crew_for_a_seventy_five_to_hundred_guest_show(configured_s
     counts = {r.role_name: (r.confirmed_count, r.on_call_count) for r in requirements}
 
     assert counts == {
+        "Server Manager": (1, 0),
         "Server": (3, 1),
         "Bartender": (1, 1),
         "Busser": (1, 0),
         "50/50": (1, 0),
     }
-    # The totals management works to for this band: six people on, two on standby.
-    assert sum(c for c, _ in counts.values()) == 6
+    # Seven on and two on standby: the six-plus-two crew, plus the Server Manager who
+    # comes in mid-afternoon ahead of them.
+    assert sum(c for c, _ in counts.values()) == 7
     assert sum(o for _, o in counts.values()) == 2
 
 
@@ -841,3 +879,338 @@ def test_a_position_that_is_already_filled_cannot_be_filled_again(configured_sta
 
     with pytest.raises(ValidationError, match="already filled"):
         fill_assignment(run, show, template, someone, "should be refused")
+
+
+@pytest.mark.django_db
+def test_an_approved_schedule_can_still_be_corrected(one_show_run):
+    """Approval is a decision, not a lock.
+
+    A mistake found after approval is still a mistake, and refusing the edit just
+    forces a manager to regenerate the whole period to change one name.
+    """
+    from scheduling.services.workflow import override_assignment
+
+    one_show_run.status = ScheduleRunStatus.APPROVED
+    one_show_run.save(update_fields=["status"])
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    replacement = _free_server(one_show_run, assignment.show)
+
+    override_assignment(assignment, replacement, "wrong person approved by mistake")
+
+    assignment.refresh_from_db()
+    assert assignment.employee == replacement
+
+
+@pytest.mark.django_db
+def test_a_shortage_can_still_be_filled_after_approval(one_show_run):
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.workflow import fill_assignment
+
+    one_show_run.status = ScheduleRunStatus.APPROVED
+    one_show_run.save(update_fields=["status"])
+    show = one_show_run.assignments.first().show
+    template = ShiftTemplate.objects.get(code="on-call-server")
+    if one_show_run.assignments.filter(shift_template=template).exists():
+        one_show_run.assignments.filter(shift_template=template).delete()
+    candidate = _free_server(one_show_run, show)
+
+    fill_assignment(one_show_run, show, template, candidate, "correcting after approval")
+
+    assert one_show_run.assignments.filter(shift_template=template).exists()
+
+
+@pytest.mark.django_db
+def test_editing_a_synced_run_says_square_no_longer_matches(one_show_run):
+    """The edit is allowed, but the drafts in Square still show the old roster."""
+    from scheduling.services.workflow import override_assignment
+
+    one_show_run.status = ScheduleRunStatus.SYNCED_TO_SQUARE
+    one_show_run.save(update_fields=["status"])
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    replacement = _free_server(one_show_run, assignment.show)
+
+    override_assignment(assignment, replacement, "corrected after sync")
+
+    flagged = one_show_run.warnings.filter(
+        warning_type=WarningType.SQUARE_OUT_OF_DATE, resolved=False
+    )
+    assert flagged.exists()
+    assert flagged.first().severity == WarningSeverity.WARNING  # must not block re-approval
+
+
+@pytest.mark.django_db
+def test_editing_an_unsynced_run_raises_no_square_warning(one_show_run):
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    replacement = _free_server(one_show_run, assignment.show)
+
+    override_assignment(assignment, replacement, "ordinary correction")
+
+    assert not one_show_run.warnings.filter(warning_type=WarningType.SQUARE_OUT_OF_DATE).exists()
+
+
+@pytest.mark.django_db
+def test_eligibility_is_still_enforced_on_an_approved_schedule(one_show_run):
+    """Unlocking approval must not unlock double-booking."""
+    from scheduling.services.workflow import override_assignment
+
+    one_show_run.status = ScheduleRunStatus.APPROVED
+    one_show_run.save(update_fields=["status"])
+    assignment = one_show_run.assignments.get(shift_template__code="lead-server")
+    already_working = (
+        one_show_run.assignments.exclude(pk=assignment.pk).first().employee
+    )
+
+    with pytest.raises(ValidationError):
+        override_assignment(assignment, already_working, "should still be refused")
+
+
+@pytest.mark.django_db
+def test_the_same_person_can_have_their_hours_changed(one_show_run):
+    """Editing a shift must not treat that shift as a clash with itself.
+
+    Keeping the person and moving only the times was refused twice over - as an
+    overlapping assignment and as a second role for the show - because the check
+    counted the very row being rewritten.
+    """
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="busser")
+    same_person = assignment.employee
+
+    override_assignment(
+        assignment, same_person, "starting later that night",
+        start_time=time(19, 0), end_time=time(22, 30),
+    )
+
+    assignment.refresh_from_db()
+    assert assignment.employee == same_person
+    assert timezone.localtime(assignment.start_datetime).time() == time(19, 0)
+    assert timezone.localtime(assignment.end_datetime).time() == time(22, 30)
+
+
+@pytest.mark.django_db
+def test_changing_hours_in_place_still_refuses_a_genuine_clash(one_show_run):
+    """Excluding the edited row must not excuse a real double-booking."""
+    from scheduling.services.workflow import override_assignment
+
+    busser = one_show_run.assignments.get(shift_template__code="busser")
+    lead_server_person = one_show_run.assignments.get(
+        shift_template__code="lead-server"
+    ).employee
+
+    with pytest.raises(ValidationError):
+        override_assignment(busser, lead_server_person, "should still be refused")
+
+
+@pytest.mark.django_db
+def test_hours_changed_in_place_are_recalculated(one_show_run):
+    from scheduling.services.workflow import override_assignment
+
+    assignment = one_show_run.assignments.get(shift_template__code="busser")
+    override_assignment(
+        assignment, assignment.employee, "shorter shift",
+        start_time=time(19, 0), end_time=time(22, 0),
+    )
+
+    assignment.refresh_from_db()
+    assert assignment.scheduled_paid_hours == Decimal("3.00")
+
+
+# --- management's own call times ------------------------------------------------
+
+STANDARD_EVENING_EXPECTED = {
+    "server-manager": (time(14, 0), time(21, 0)),
+    "lead-server": (time(15, 0), time(21, 0)),
+    "server-2": (time(16, 0), time(21, 30)),
+    "server-3": (time(17, 30), time(23, 0)),
+    "on-call-server": (time(18, 15), time(23, 0)),
+    "busser": (time(18, 45), time(23, 0)),
+    "bartender": (time(16, 0), time(23, 0)),
+    "on-call-bartender": (time(17, 30), time(22, 30)),
+}
+
+DWIGHTS_EXPECTED = {
+    "server-manager": (time(14, 0), time(21, 0)),
+    "lead-server": (time(15, 0), time(21, 0)),
+    "server-2": (time(15, 30), time(21, 30)),
+    "server-3": (time(17, 0), time(22, 30)),
+    "on-call-server": (time(19, 0), time(22, 30)),
+    "busser": (time(19, 15), time(23, 0)),
+    "bartender": (time(16, 0), time(22, 30)),
+    "on-call-bartender": (time(17, 0), time(22, 30)),
+}
+
+
+def _window(show, code):
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.engine import shift_window_for
+
+    start, end = shift_window_for(show, ShiftTemplate.objects.get(code=code))
+    return timezone.localtime(start).time(), timezone.localtime(end).time()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("code", "expected"), sorted(STANDARD_EVENING_EXPECTED.items()))
+def test_a_half_six_show_uses_managements_call_times(configured_staff, code, expected):
+    show = make_show(title="Forever Country", start_time=time(18, 30))
+    assert _window(show, code) == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("code", "expected"), sorted(DWIGHTS_EXPECTED.items()))
+def test_dwights_wedding_uses_its_own_call_times(configured_staff, code, expected):
+    show = make_show(
+        title="(It's a Nice Day for) Dwight's Wedding!! - Fall 2026",
+        start_time=time(18, 30),
+    )
+    assert _window(show, code) == expected
+
+
+@pytest.mark.django_db
+def test_dwights_wins_on_title_whichever_time_the_calendar_recorded(configured_staff):
+    """Doors are 6:00pm and Act I 6:30pm, so the calendar holds both for Dwight's.
+
+    The title is what reliably says which timetable applies; the start time does not.
+    """
+    at_doors = make_show(
+        date(2026, 9, 12), title="Dwight's Wedding", start_time=time(18, 0)
+    )
+    at_curtain = make_show(
+        date(2026, 9, 19), title="Dwight's Wedding", start_time=time(18, 30)
+    )
+    expected = (time(19, 15), time(23, 0))
+    assert _window(at_doors, "busser") == expected
+    assert _window(at_curtain, "busser") == expected
+
+
+@pytest.mark.django_db
+def test_an_unusual_show_still_derives_its_window_from_its_own_times(configured_staff):
+    """A matinee is on neither list, and must not be forced onto an evening clock."""
+    show = make_show(title="Ugly Stick Workshop", start_time=time(13, 0), end_time=time(15, 0))
+    start, end = _window(show, "lead-server")
+    assert start < time(13, 0)  # in before doors, derived - not the 15:00 evening call
+
+
+@pytest.mark.django_db
+def test_extra_servers_and_bartenders_share_the_crews_clock(configured_staff):
+    show = make_show(title="Forever Country", start_time=time(18, 30))
+    assert _window(show, "server-4") == _window(show, "server-3")
+    assert _window(show, "bartender-2") == _window(show, "bartender")
+
+
+@pytest.mark.django_db
+def test_every_show_asks_for_a_server_manager(configured_staff):
+    requirements, _ = staffing_requirements_for(make_show())
+    counts = {r.role_name: (r.confirmed_count, r.on_call_count) for r in requirements}
+    assert counts["Server Manager"] == (1, 0)
+
+
+@pytest.mark.django_db
+def test_the_manager_is_schedulable_for_her_own_role_but_nothing_else(configured_staff):
+    """She is excluded from the ordinary rota; the exemption is scoped to this role."""
+    from scheduling.models import EmployeeRole, Role, ScheduleRun, ShiftTemplate
+    from scheduling.services.eligibility import EligibilityService
+    from scheduling.services.engine import shift_window_for
+
+    # Seeded by seed_spirit_staff; mark her excluded the way the real roster does.
+    manager = Employee.objects.get(display_name="Deborah Sweetapple")
+    manager.excluded_from_automatic_scheduling = True
+    manager.save(update_fields=["excluded_from_automatic_scheduling"])
+    EmployeeRole.objects.update_or_create(
+        employee=manager,
+        role=Role.objects.get(name="Server"),
+        defaults={"active": True, "capability_level": 5},
+    )
+    show = make_show(start_time=time(18, 30))
+    make_all_available([manager], show.date)
+    # A bare run, not a generated one: generating would assign her to Server Manager
+    # and the check below would then see her own assignment as the clash.
+    run = ScheduleRun.objects.create(
+        start_date=show.date, end_date=show.date, status=ScheduleRunStatus.DRAFT
+    )
+
+    def eligible_for(code, role_name):
+        template = ShiftTemplate.objects.get(code=code)
+        start, end = shift_window_for(show, template)
+        return EligibilityService().evaluate(
+            manager, Role.objects.get(name=role_name), show, template, run, start, end
+        ).eligible
+
+    assert eligible_for("server-manager", "Server Manager") is True
+    assert eligible_for("lead-server", "Server") is False
+
+
+@pytest.mark.django_db
+def test_an_absent_manager_is_reported_as_a_shortage_not_quietly_skipped(configured_staff):
+    from scheduling.models import EmployeeTimeOff, TimeOffStatus
+
+    manager = Employee.objects.get(display_name="Deborah Sweetapple")
+    show = make_show(start_time=time(18, 30))
+    make_all_available(configured_staff, show.date)
+    EmployeeTimeOff.objects.create(
+        employee=manager, start_date=show.date, end_date=show.date,
+        status=TimeOffStatus.APPROVED, reason="Out of province",
+    )
+
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    assert not run.assignments.filter(shift_template__code="server-manager").exists()
+    assert run.warnings.filter(warning_type=WarningType.SERVER_MANAGER_SHORTAGE).exists()
+
+
+@pytest.mark.django_db
+def test_the_manager_is_scheduled_although_square_holds_no_availability_for_her(
+    configured_staff,
+):
+    """Managers do not file weekly availability; the blank must not read as a refusal.
+
+    Every other role treats an unknown as a hard no, and must keep doing so - the
+    exemption is for the one position whose rule is "in for every show unless she has
+    booked time off".
+    """
+    manager = Employee.objects.get(display_name="Deborah Sweetapple")
+    show = make_show(start_time=time(18, 30))
+    make_all_available([e for e in configured_staff if e != manager], show.date)
+    assert not EmployeeAvailability.objects.filter(employee=manager, date=show.date).exists()
+
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    assignment = run.assignments.get(shift_template__code="server-manager")
+    assert assignment.employee == manager
+    assert timezone.localtime(assignment.start_datetime).time() == time(14, 0)
+    assert not run.warnings.filter(warning_type=WarningType.SERVER_MANAGER_SHORTAGE).exists()
+
+
+@pytest.mark.django_db
+def test_availability_square_actually_holds_still_counts_against_the_manager(
+    configured_staff,
+):
+    """The exemption covers a missing record, not a recorded one."""
+    from scheduling.models import AvailabilityType, Role, ScheduleRun, ShiftTemplate
+    from scheduling.services.eligibility import EligibilityService
+    from scheduling.services.engine import shift_window_for
+
+    manager = Employee.objects.get(display_name="Deborah Sweetapple")
+    show = make_show(start_time=time(18, 30))
+    EmployeeAvailability.objects.create(
+        employee=manager,
+        date=show.date,
+        availability_type=AvailabilityType.AVAILABLE_WINDOW,
+        start_time=time(17, 0),
+        end_time=time(21, 0),
+    )
+    run = ScheduleRun.objects.create(
+        start_date=show.date, end_date=show.date, status=ScheduleRunStatus.DRAFT
+    )
+    template = ShiftTemplate.objects.get(code="server-manager")
+    start, end = shift_window_for(show, template)
+    result = EligibilityService().evaluate(
+        manager, Role.objects.get(name="Server Manager"), show, template, run, start, end
+    )
+
+    # She is called at 14:00 and Square says she is free from 17:00 - that is a real
+    # conflict, recorded by a person, and it stands.
+    assert result.eligible is False
+    assert any("not fully covered" in reason for reason in result.reasons)

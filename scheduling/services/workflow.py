@@ -35,11 +35,6 @@ def override_assignment(
     the old hours and then saving different ones would wave through exactly the case
     the check exists to catch.
     """
-    if assignment.schedule_run.status in {
-        ScheduleRunStatus.APPROVED,
-        ScheduleRunStatus.SYNCED_TO_SQUARE,
-    }:
-        raise ValidationError("Approved schedules cannot be modified.")
     if len(reason.strip()) < 5:
         raise ValidationError("An override reason of at least five characters is required.")
 
@@ -53,6 +48,10 @@ def override_assignment(
         assignment.schedule_run,
         start_datetime,
         end_datetime,
+        # This shift is being rewritten, so its own row must not count against the
+        # person going into it. Without this, keeping the same person and moving only
+        # the hours is refused for clashing with itself.
+        exclude_assignment=assignment,
     )
     if not result.eligible:
         raise ValidationError("Replacement is ineligible: " + "; ".join(result.reasons))
@@ -78,6 +77,9 @@ def override_assignment(
     )
     assignment.full_clean()
     assignment.save()
+    _flag_square_divergence(
+        assignment.schedule_run, f"{assignment.shift_template.name} reassigned"
+    )
     return assignment
 
 
@@ -122,6 +124,36 @@ def _describe(start, end) -> str:
     return f"{timezone.localtime(start):%H:%M}-{timezone.localtime(end):%H:%M}"
 
 
+
+def _flag_square_divergence(schedule_run, what: str) -> None:
+    """Say out loud that Square no longer matches, after editing a synced run.
+
+    Editing an approved run is fine - a mistake found after approval is still a
+    mistake. Editing one whose shifts are already in Square is also fine, but it
+    leaves the drafts there showing the old roster, and nothing else on the page
+    would say so. A WARNING, not an ERROR: it must not block re-approval, it must
+    just be impossible to miss.
+    """
+    from scheduling.models import WarningType
+
+    if schedule_run.status != ScheduleRunStatus.SYNCED_TO_SQUARE:
+        return
+    SchedulingWarning.objects.update_or_create(
+        schedule_run=schedule_run,
+        warning_type=WarningType.SQUARE_OUT_OF_DATE,
+        show=None,
+        defaults={
+            "severity": WarningSeverity.WARNING,
+            "resolved": False,
+            "message": (
+                f"This schedule was changed after being sent to Square ({what}). "
+                "The shifts in Square still show the previous roster - re-sync, or "
+                "correct them in Square."
+            ),
+        },
+    )
+
+
 @transaction.atomic
 def approve_schedule(schedule_run: ScheduleRun, user) -> ScheduleRun:
     if schedule_run.status in {ScheduleRunStatus.APPROVED, ScheduleRunStatus.SYNCED_TO_SQUARE}:
@@ -141,11 +173,6 @@ def approve_schedule(schedule_run: ScheduleRun, user) -> ScheduleRun:
 def resolve_warning(warning: SchedulingWarning, note: str) -> SchedulingWarning:
     if len(note.strip()) < 5:
         raise ValidationError("A resolution note of at least five characters is required.")
-    if warning.schedule_run.status in {
-        ScheduleRunStatus.APPROVED,
-        ScheduleRunStatus.SYNCED_TO_SQUARE,
-    }:
-        raise ValidationError("Warnings on approved schedules cannot be changed.")
     warning.resolved = True
     warning.resolution_note = note.strip()
     warning.save(update_fields=["resolved", "resolution_note"])
@@ -177,8 +204,6 @@ def fill_assignment(
     from scheduling.models import ScheduleAssignment
     from scheduling.services.engine import SHORTAGE_TYPES, shift_window_for
 
-    if schedule_run.status in {ScheduleRunStatus.APPROVED, ScheduleRunStatus.SYNCED_TO_SQUARE}:
-        raise ValidationError("Approved schedules cannot be modified.")
     if len(reason.strip()) < 5:
         raise ValidationError("A reason of at least five characters is required.")
     if schedule_run.assignments.filter(show=show, shift_template=template).exists():
@@ -221,6 +246,7 @@ def fill_assignment(
     _apply_hours(assignment)
     assignment.full_clean()
     assignment.save()
+    _flag_square_divergence(schedule_run, f"{template.name} filled")
 
     # The shortage warning is why this run cannot be approved. Leaving it standing
     # after the gap has been closed would block approval over a problem that no

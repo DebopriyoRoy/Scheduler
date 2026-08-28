@@ -30,6 +30,9 @@ STAFF = (
     StaffMember("Neil Bobbit", (("Bartender", 3),)),
     StaffMember("Brittany James", (("Bartender", 3),)),
     StaffMember("Khrystyna", (("Busser", 3),)),
+    # The Server Manager runs the floor from mid-afternoon. Kept out of the ordinary
+    # rota by the manager exclusion; the Server Manager role is the exemption.
+    StaffMember("Deborah Sweetapple", (("Server Manager", 5),)),
     StaffMember("Emily", (("Busser", 3),)),
     StaffMember("Maks Plsky", (("Busser", 3),)),
 )
@@ -40,7 +43,7 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        role_names = ("Server", "Bartender", "Busser", "50/50")
+        role_names = ("Server", "Bartender", "Busser", "50/50", "Server Manager")
         roles = {name: Role.objects.get_or_create(name=name)[0] for name in role_names}
         created_count = 0
         updated_count = 0

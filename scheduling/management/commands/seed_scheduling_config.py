@@ -9,6 +9,19 @@ from django.db.models import Q
 from scheduling.models import AssignmentType, Role, ShiftTemplate, StaffingRule
 
 SHIFT_TEMPLATES = (
+    # The Server Manager oversees the floor from mid-afternoon. One per show, ahead of
+    # the standing crew in position_order because they are first in.
+    (
+        "server-manager",
+        "Server Manager",
+        "Server Manager",
+        AssignmentType.CONFIRMED,
+        time(14),
+        time(21),
+        7,
+        0,
+        5,
+    ),
     (
         "lead-server",
         "Server 1",
@@ -153,7 +166,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         roles = {
             name: Role.objects.get_or_create(name=name)[0]
-            for name in ("Server", "Bartender", "Busser", "50/50")
+            for name in ("Server", "Bartender", "Busser", "50/50", "Server Manager")
         }
         for (
             code,

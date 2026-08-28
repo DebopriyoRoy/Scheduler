@@ -166,7 +166,7 @@ The deterministic constraint engine fills exactly these standard positions for a
 - Busser;
 - 50/50 when the show requires it.
 
-Hard constraints cover availability, role qualification, manager exclusion, overlap, one role per person/show, office overlap, and bartender protection. Soft ordering uses separately visible confirmed hours, confirmed shifts, on-call burden, weekend burden, recent consecutive nights, and Spirit-only opportunity priority for Olena and Jackie. Every assignment records a plain-language selection reason.
+Hard constraints cover availability, role qualification, manager exclusion, overlap, one role per person/show, office overlap, and bartender protection. Soft ordering uses separately visible confirmed hours, confirmed shifts, on-call burden, weekend burden, and recent consecutive nights. No employee carries a scheduling preference: all staff of a given role rank equally. Every assignment records a plain-language selection reason.
 
 ### Understanding warnings
 

@@ -78,7 +78,7 @@ def test_square_availability_sync_provenance_and_audit():
     summary = service.execute_sync(date(2026, 9, 7), date(2026, 10, 3))
 
     assert summary.sync_run.environment == "PRODUCTION"
-    assert summary.total_requested == 17
+    assert summary.total_requested == 18
 
     # Completeness is a real measurement now. It read 100% before only because an
     # empty roster made the denominator zero - the fixture provider has never held

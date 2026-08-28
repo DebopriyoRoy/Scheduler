@@ -357,13 +357,16 @@ def test_completeness_sanity_check_13_dates():
 
     # Counts reflect the corrected Kate transcription (Thursday 17:30 not 05:30, plus her
     # previously-missing Saturday) and Molly's management-directed every-evening window.
-    assert run.total_employee_date_combinations == 221
+    # 18 staff x 13 dates. The roster gained the Server Manager.
+    assert run.total_employee_date_combinations == 234
     assert run.known_employee_date_combinations == 126
-    assert run.unknown_employee_date_combinations == 95
+    assert run.unknown_employee_date_combinations == 108
     assert run.available_window_combinations == 117
     assert run.available_window_records == 138
     assert run.all_day_combinations == 7
-    assert float(run.completeness_percentage) == 57.0
+    # 126 known of 234 (18 staff x 13 dates); the roster gained the Server Manager,
+    # who has no Square availability, so completeness falls rather than the data changing.
+    assert float(run.completeness_percentage) == 53.8
 
 
 @pytest.mark.django_db

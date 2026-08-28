@@ -349,6 +349,15 @@ def test_pilot_duplicate_detected_as_already_exists(monkeypatch, settings):
 
     # Map staff & role
     jackie = Employee.objects.get(display_name="Jackie Pynn")
+    # Put Jackie on the pilot slot explicitly. Which server wins it is not what this
+    # test is about: all servers now rank equally, so the roster is free to change from
+    # run to run, and the pilot guard only means anything while she holds that shift.
+    run.assignments.filter(employee=jackie).exclude(
+        shift_template__code="lead-server"
+    ).delete()
+    lead = run.assignments.get(shift_template__code="lead-server")
+    lead.employee = jackie
+    lead.save(update_fields=["employee"])
     SquareEmployeeMapping.objects.create(
         employee=jackie,
         environment="production",
