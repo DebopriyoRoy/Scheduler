@@ -980,6 +980,15 @@ def schedule_detail(request, run_id):
             "hard_errors": schedule_run.warnings.filter(
                 severity=WarningSeverity.ERROR, resolved=False
             ).count(),
+            # Only the warnings that actually block approval, so the manager can see
+            # what is in the way and clear it. The general warnings list was removed
+            # from this page deliberately; this is not that list coming back - it is
+            # empty on a clean run and never shows the informational ones.
+            "blocking_warnings": (
+                schedule_run.warnings.filter(severity=WarningSeverity.ERROR, resolved=False)
+                .select_related("show")
+                .order_by("show__date", "warning_type")
+            ),
         },
     )
 
@@ -1911,3 +1920,40 @@ def time_off_sync(request):
             "applied. Check the spelling against Square.",
         )
     return redirect("employees")
+
+
+@login_required
+def schedule_warnings_accept_all(request, run_id):
+    """Accept every remaining blocker on a run at once, with one shared reason.
+
+    Not every hard error can be solved. A shortage exists precisely because nobody
+    eligible could fill it, and on a thin month there can be twenty of them - making
+    a manager clear those one at a time is how a safety gate turns into a reason to
+    stop using the application.
+
+    The reason is written onto each warning individually, so the audit trail still
+    says why each was accepted rather than pointing at a single bulk action.
+    """
+    schedule_run = ScheduleRun.objects.filter(pk=run_id).first()
+    if schedule_run is None:
+        messages.info(request, f"Schedule #{run_id} no longer exists.")
+        return redirect("schedule_list")
+    if request.method != "POST":
+        return redirect("schedule_detail", run_id=run_id)
+
+    note = (request.POST.get("resolution_note") or "").strip()
+    if len(note) < 5:
+        messages.error(request, "A reason of at least five characters is required.")
+        return redirect("schedule_detail", run_id=run_id)
+    if schedule_run.status in {ScheduleRunStatus.APPROVED, ScheduleRunStatus.SYNCED_TO_SQUARE}:
+        messages.error(request, "Warnings on approved schedules cannot be changed.")
+        return redirect("schedule_detail", run_id=run_id)
+
+    blocking = schedule_run.warnings.filter(severity=WarningSeverity.ERROR, resolved=False)
+    count = blocking.update(resolved=True, resolution_note=note)
+    messages.success(
+        request,
+        f"Accepted {count} blocker{pluralize(count)} on schedule #{run_id}. "
+        "It can be approved now, and the reason is recorded against each one.",
+    )
+    return redirect("schedule_detail", run_id=run_id)

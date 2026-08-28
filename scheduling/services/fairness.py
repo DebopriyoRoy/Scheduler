@@ -3,7 +3,7 @@ Fairness Service for the Spirit of Newfoundland Scheduling Engine.
 
 Calculates normalized fairness scores (0.00 to 1.00) for confirmed shifts and on-call assignments,
 tracking eligible opportunities, actual hours, role-specific opportunities, weekend burden,
-rest/consecutive-night burden, Spirit-only target hours adjustments, and close tie-breakers.
+rest/consecutive-night burden, target hours adjustments, and close tie-breakers.
 """
 
 from dataclasses import dataclass, field
@@ -278,8 +278,6 @@ class FairnessService:
                     m.target_hours_adjustment = 0.05
                 else:
                     m.target_hours_adjustment = 0.00
-            elif emp.spirit_only_employment or emp.employment_priority > 0:
-                m.target_hours_adjustment = 0.15
             else:
                 m.target_hours_adjustment = 0.00
 

@@ -1,6 +1,28 @@
 {% extends "scheduling/base.html" %}
 {% block title %}Sign in | Spirit Scheduling Agent{% endblock %}
 {% block content %}
-<div class="row justify-content-center py-5"><div class="col-md-6 col-lg-4"><div class="card border-0 shadow-sm"><div class="card-body p-4"><h1 class="h3 mb-3">Management sign in</h1>{% if form.errors %}<div class="alert alert-danger">Your username or password was not accepted.</div>{% endif %}<form method="post">{% csrf_token %}<div class="mb-3"><label class="form-label" for="id_username">Username</label><input class="form-control" type="text" name="username" id="id_username" autocomplete="username" required autofocus></div><div class="mb-3"><label class="form-label" for="id_password">Password</label><input class="form-control" type="password" name="password" id="id_password" autocomplete="current-password" required></div><button class="btn btn-primary w-100" type="submit">Sign in</button></form></div></div></div></div>
+<div class="row justify-content-center py-5"><div class="col-md-6 col-lg-4"><div class="card border-0 shadow-sm"><div class="card-body p-4"><h1 class="h3 mb-3">Management sign in</h1>{% if form.errors %}<div class="alert alert-danger">Your username or password was not accepted.</div>{% endif %}<form method="post">{% csrf_token %}<div class="mb-3"><label class="form-label" for="id_username">Username</label><input class="form-control" type="text" name="username" id="id_username" autocomplete="username" required autofocus></div><div class="mb-3"><label class="form-label" for="id_password">Password</label><div class="input-group"><input class="form-control" type="password" name="password" id="id_password" autocomplete="current-password" required><button class="btn btn-outline-secondary" type="button" id="toggle-password" aria-controls="id_password" aria-pressed="false" aria-label="Show the password" title="Show the password">Show</button></div></div><button class="btn btn-primary w-100" type="submit">Sign in</button></form></div></div></div></div>
+<script>
+  // type="button" on the toggle matters: a bare <button> inside a form defaults to
+  // submit, so revealing the password would post the form instead.
+  (function () {
+    var field = document.getElementById("id_password");
+    var toggle = document.getElementById("toggle-password");
+    if (!field || !toggle) return;
+    toggle.addEventListener("click", function () {
+      var revealed = field.type === "text";
+      field.type = revealed ? "password" : "text";
+      toggle.textContent = revealed ? "Show" : "Hide";
+      var label = (revealed ? "Show" : "Hide") + " the password";
+      toggle.setAttribute("aria-pressed", revealed ? "false" : "true");
+      toggle.setAttribute("aria-label", label);
+      toggle.setAttribute("title", label);
+      // Changing the type sends the caret to the end, so put it back.
+      var caret = field.value.length;
+      field.focus();
+      field.setSelectionRange(caret, caret);
+    });
+  })();
+</script>
 {% endblock %}
 

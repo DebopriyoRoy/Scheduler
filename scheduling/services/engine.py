@@ -108,9 +108,78 @@ class Candidate:
     capability_level: int
 
 
+# Management's own call times, by show type. These are clock times a person is told
+# to arrive at, not offsets from doors: "Server 2 comes in at four" is the instruction
+# that actually gets given, and deriving it from the curtain drifts whenever a show's
+# recorded times move.
+#
+# Dwight's Wedding runs to its own timetable - doors 6:00pm, Act I 6:30pm, dinner
+# 7:30pm - so its staff come in and leave at different clock times from an ordinary
+# evening. It is matched on title rather than start time, because the calendar records
+# some Dwight's dates against the curtain (18:30) and some against the doors (18:00);
+# the title is the thing that reliably says which timetable applies.
+STANDARD_EVENING_WINDOWS = {
+    "server-manager": (time(14, 0), time(21, 0)),
+    "lead-server": (time(15, 0), time(21, 0)),
+    "server-2": (time(16, 0), time(21, 30)),
+    "server-3": (time(17, 30), time(23, 0)),
+    "on-call-server": (time(18, 15), time(23, 0)),
+    "busser": (time(18, 45), time(23, 0)),
+    "bartender": (time(16, 0), time(23, 0)),
+    "on-call-bartender": (time(17, 30), time(22, 30)),
+}
+
+DWIGHTS_WEDDING_WINDOWS = {
+    "server-manager": (time(14, 0), time(21, 0)),
+    "lead-server": (time(15, 0), time(21, 0)),
+    "server-2": (time(15, 30), time(21, 30)),
+    "server-3": (time(17, 0), time(22, 30)),
+    "on-call-server": (time(19, 0), time(22, 30)),
+    "busser": (time(19, 15), time(23, 0)),
+    "bartender": (time(16, 0), time(22, 30)),
+    "on-call-bartender": (time(17, 0), time(22, 30)),
+}
+
+# A big night adds Server 4-6 and Bartender 2-3. They were given no call times of their
+# own, so they take the last-in position's: Server 3 for extra servers, Bartender 1 for
+# extra bartenders. Leaving them on the old derived offsets would put one crew on two
+# different clocks for the same show.
+WINDOW_ALIASES = {
+    "server-4": "server-3",
+    "server-5": "server-3",
+    "server-6": "server-3",
+    "on-call-server-2": "on-call-server",
+    "on-call-server-3": "on-call-server",
+    "bartender-2": "bartender",
+    "bartender-3": "bartender",
+    "on-call-bartender-2": "on-call-bartender",
+}
+
+# The evening timetable applies to a show that opens at half six.
+STANDARD_EVENING_START = time(18, 30)
+
+
+def is_dwights_wedding(show: Show) -> bool:
+    return "dwight" in (show.title or "").casefold()
+
+
+def call_times_for(show: Show, template_code: str) -> tuple[time, time] | None:
+    """The clock times management calls this position in for, or None to derive them."""
+    code = WINDOW_ALIASES.get(template_code, template_code)
+    if is_dwights_wedding(show):
+        return DWIGHTS_WEDDING_WINDOWS.get(code)
+    if show.start_time == STANDARD_EVENING_START:
+        return STANDARD_EVENING_WINDOWS.get(code)
+    return None
+
+
 def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, datetime]:
-    """Shift window for this role on this show, anchored to the show's own
-    doors-open/wrap-up times rather than a fixed template clock time.
+    """Shift window for this role on this show.
+
+    Management's fixed call times win where they exist. Anything else - a matinee, a
+    private booking, an odd one-off - still derives its window from the show's own
+    doors-open and wrap-up times, so an unusual date is staffed sensibly rather than
+    forced onto an evening timetable that does not fit it.
 
     Module level so that filling a slot by hand starts from the same window the
     generator would have produced, instead of a second implementation drifting from it.
@@ -119,6 +188,14 @@ def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, dat
         start = datetime.combine(show.date, FIFTY_FIFTY_START_TIME, tzinfo=LOCAL_TIMEZONE)
         end = datetime.combine(show.date, FIFTY_FIFTY_END_TIME, tzinfo=LOCAL_TIMEZONE)
         return start, end
+
+    called = call_times_for(show, template.code)
+    if called is not None:
+        start_time, end_time = called
+        start = datetime.combine(show.date, start_time, tzinfo=LOCAL_TIMEZONE)
+        end_date = show.date if end_time > start_time else show.date + timedelta(days=1)
+        return start, datetime.combine(end_date, end_time, tzinfo=LOCAL_TIMEZONE)
+
     show_end_date = show.date if show.end_time > show.start_time else show.date + timedelta(days=1)
     doors = datetime.combine(show.date, show.start_time, tzinfo=LOCAL_TIMEZONE)
     wrap = datetime.combine(show_end_date, show.end_time, tzinfo=LOCAL_TIMEZONE)
@@ -128,6 +205,7 @@ def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, dat
 
 
 SHORTAGE_TYPES = {
+    ("Server Manager", AssignmentType.CONFIRMED): WarningType.SERVER_MANAGER_SHORTAGE,
     ("Server", AssignmentType.CONFIRMED): WarningType.SERVER_SHORTAGE,
     ("Server", AssignmentType.ON_CALL): WarningType.ON_CALL_SERVER_SHORTAGE,
     ("Bartender", AssignmentType.CONFIRMED): WarningType.BARTENDER_SHORTAGE,
@@ -457,7 +535,6 @@ class SchedulingEngine:
         assignment.
         """
         targets: dict[int, Decimal] = {}
-        spirit_only_ids: set[int] = set()
         carry_in_hours: dict[int, Decimal] = {}
         preferred_role_ids: dict[int, int] = {}
         for employee in Employee.objects.filter(active=True).select_related(
@@ -466,15 +543,12 @@ class SchedulingEngine:
             pref = getattr(employee, "scheduling_preference", None)
             if pref and pref.target_hours and pref.priority_enabled:
                 targets[employee.id] = pref.target_hours
-            if employee.spirit_only_employment or employee.employment_priority > 0:
-                spirit_only_ids.add(employee.id)
             carry_in_hours[employee.id] = employee.opening_recent_hours
             if pref and pref.preferred_role_id:
                 preferred_role_ids[employee.id] = pref.preferred_role_id
 
         allocator = GlobalAllocator(
             targets,
-            spirit_only_ids,
             carry_in_hours=carry_in_hours,
             preferred_role_ids=preferred_role_ids,
         )
@@ -659,8 +733,6 @@ class SchedulingEngine:
             f"shifts so far={totals.shift_count}",
             f"ranked #1 of {pool_size} eligible by global deficit allocation",
         ]
-        if employee.id in allocator.spirit_only_ids:
-            parts.append("Spirit-only priority applied (capped, decays at target)")
         return "; ".join(parts) + "."
 
     def _eligible_candidates(

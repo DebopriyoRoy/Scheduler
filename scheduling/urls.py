@@ -43,6 +43,11 @@ urlpatterns = [
     path("schedules/<int:run_id>/new-draft/", views.schedule_new_draft, name="schedule_new_draft"),
     path("schedules/<int:run_id>/delete/", views.schedule_delete, name="schedule_delete"),
     path(
+        "schedules/<int:run_id>/warnings/accept-all/",
+        views.schedule_warnings_accept_all,
+        name="schedule_warnings_accept_all",
+    ),
+    path(
         "schedules/<int:run_id>/shows/<int:show_id>/fill/<str:code>/",
         views.schedule_fill,
         name="schedule_fill",

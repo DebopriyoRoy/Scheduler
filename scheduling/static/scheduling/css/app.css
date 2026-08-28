@@ -329,7 +329,6 @@ a { text-underline-offset: .18em; }
 .assignment-override  { border-left: .28rem double var(--orchid); }
 .assignment-shortage  { border-left: .28rem solid var(--coral); }
 
-.priority-row > * { background: color-mix(in srgb, var(--spot) 12%, var(--surface)) !important; }
 
 /* ------------------------------------------------------- alerts & forms */
 

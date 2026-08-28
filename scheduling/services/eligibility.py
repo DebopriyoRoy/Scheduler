@@ -4,6 +4,7 @@ from datetime import datetime
 from django.db.models import Q
 
 from scheduling.models import (
+    AvailabilityType,
     Employee,
     EmployeeTimeOff,
     OfficeAssignment,
@@ -16,6 +17,8 @@ from scheduling.models import (
     TimeOffStatus,
 )
 from scheduling.services.availability import AvailabilityProvider, LocalAvailabilityProvider
+
+MANAGER_ROLE_NAME = "Server Manager"
 
 EXCLUDED_MANAGER_NAMES = {
     "debroah sweetapple",
@@ -47,14 +50,20 @@ class EligibilityService:
         schedule_run: ScheduleRun,
         start_datetime: datetime,
         end_datetime: datetime,
+        exclude_assignment: ScheduleAssignment | None = None,
     ) -> EligibilityResult:
         reasons: list[str] = []
         if not employee.active:
             reasons.append("Employee is inactive.")
-        if (
+        # Managers are kept out of the ordinary rota, but the Server Manager position
+        # exists precisely for them - excluding them from their own job would leave it
+        # permanently unfilled. The exemption is scoped to that one role, so they are
+        # still never picked as an ordinary Server, Bartender or Busser.
+        manager_excluded = (
             employee.excluded_from_automatic_scheduling
             or employee.display_name.strip().casefold() in EXCLUDED_MANAGER_NAMES
-        ):
+        )
+        if manager_excluded and role.name != MANAGER_ROLE_NAME:
             reasons.append("Employee is explicitly excluded from automatic scheduling.")
         employee_role = employee.employee_roles.filter(role=role, active=True).first()
         if employee_role is None:
@@ -86,7 +95,17 @@ class EligibilityService:
             shift_start_time,
             shift_end_time,
         )
-        if not availability.available:
+        # The Server Manager is in for every show unless she has booked time off, so a
+        # silent Square record is not a refusal for that one role. Managers do not file
+        # weekly availability the way hourly staff do, and reading the resulting blank as
+        # "unavailable" left the position unfilled on every show in the calendar. A window
+        # actually recorded in Square still counts against her: real data stays real, and
+        # every other role is unaffected - an unknown is still a hard no for them.
+        blank_record_for_the_manager = (
+            role.name == MANAGER_ROLE_NAME
+            and availability.availability_type == AvailabilityType.UNKNOWN
+        )
+        if not availability.available and not blank_record_for_the_manager:
             reasons.extend(availability.reasons)
 
         # Approved time off only. A pending request is a question a manager has not
@@ -118,6 +137,11 @@ class EligibilityService:
         if office_conflict:
             reasons.append("Office assignment overlaps this shift.")
 
+        # The shift being edited is not a conflict with itself. Without this, moving
+        # somebody's hours while keeping them on the shift was rejected as both an
+        # overlap and a second role for the show - the assignment collided with its
+        # own database row, and the one edit that needs no eligibility argument at
+        # all was the one the checks refused.
         overlapping_assignments = ScheduleAssignment.objects.filter(
             employee=employee,
             start_datetime__lt=end_datetime,
@@ -131,13 +155,18 @@ class EligibilityService:
                 ]
             )
         )
-        if overlapping_assignments.exists():
-            reasons.append("An existing schedule assignment overlaps this shift.")
-        if ScheduleAssignment.objects.filter(
+        same_show_assignments = ScheduleAssignment.objects.filter(
             schedule_run=schedule_run,
             show=show,
             employee=employee,
-        ).exists():
+        )
+        if exclude_assignment is not None and exclude_assignment.pk:
+            overlapping_assignments = overlapping_assignments.exclude(pk=exclude_assignment.pk)
+            same_show_assignments = same_show_assignments.exclude(pk=exclude_assignment.pk)
+
+        if overlapping_assignments.exists():
+            reasons.append("An existing schedule assignment overlaps this shift.")
+        if same_show_assignments.exists():
             reasons.append("Employee is already assigned another role for this show.")
 
         return EligibilityResult(not reasons, tuple(reasons or ["All hard constraints passed."]))

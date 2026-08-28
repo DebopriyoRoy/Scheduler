@@ -40,7 +40,7 @@ def assumptions(schedule_run) -> list[tuple[str, str]]:
             "Coverage",
             "Bartender positions are filled before ordinary servers to protect bar coverage.",
         ),
-        ("Priority", "Olena and Jackie receive a soft Spirit-only opportunity preference only."),
+        ("Priority", "No employee receives a scheduling preference; all staff rank equally."),
         (
             "50/50",
             "Yana and Kate alternate when both are eligible; interruptions do not advance it.",
