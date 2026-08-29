@@ -130,3 +130,64 @@ def test_the_raffle_window_follows_the_show_it_belongs_to(configured_staff):
 
     start, end = shift_window_for(dwights, template)
     assert (start.time(), end.time()) == (time(18, 0), time(21, 30))
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "HOME SWEET HOME-I-CIDE!",
+        "Forever Country…in the Key of Spirit!! - Fall 2026",
+        "Shift Happens!",
+        "Private Shift Happens on 03 October 2026",
+    ],
+)
+def test_the_regular_shows_keep_house_timing_whatever_the_clock_says(configured_staff, title):
+    """Doors 6:30, dinner 7, curtain 8 - recognised by name, not by start time.
+
+    Matching on the clock alone is fragile. Dwight's is the proof: the same production
+    is entered against the doors on some dates and the curtain on others. A regular
+    show whose calendar entry drifts off 18:30 would silently fall back to offsets
+    derived from whatever times it did carry, re-timing the whole crew.
+    """
+    from scheduling.models import ShiftTemplate
+
+    drifted = Show.objects.create(
+        title=title, date=date(2026, 10, 23),
+        start_time=time(19, 0), end_time=time(23, 0), expected_guests=80,
+    )
+    template = ShiftTemplate.objects.get(code="server-2", active=True)
+
+    start, end = shift_window_for(drifted, template)
+
+    assert (start.time(), end.time()) == (time(16, 0), time(21, 30))
+
+
+def test_dwights_wedding_still_wins_over_the_regular_timetable(configured_staff):
+    """Its own timetable takes precedence, including on the private dates."""
+    from scheduling.models import ShiftTemplate
+
+    show = Show.objects.create(
+        title="PRIVATE EVENT - (It's a Nice Day for) Dwight's Wedding!!",
+        date=date(2026, 10, 21),
+        start_time=time(18, 0), end_time=time(22, 0), expected_guests=80,
+    )
+    template = ShiftTemplate.objects.get(code="server-2", active=True)
+
+    start, end = shift_window_for(show, template)
+
+    assert (start.time(), end.time()) == (time(15, 30), time(21, 30))
+
+
+def test_a_show_on_neither_timetable_still_derives_its_own_window(configured_staff):
+    """A private booking at eight must not be forced onto an evening timetable."""
+    from scheduling.models import ShiftTemplate
+
+    show = Show.objects.create(
+        title="Private @ Gower October 24 2026", date=date(2026, 10, 24),
+        start_time=time(20, 0), end_time=time(23, 50), expected_guests=80,
+    )
+    template = ShiftTemplate.objects.get(code="bartender", active=True)
+
+    start, end = shift_window_for(show, template)
+
+    assert (start.time(), end.time()) == (time(19, 0), time(0, 5))

@@ -160,9 +160,29 @@ WINDOW_ALIASES = {
 # The evening timetable applies to a show that opens at half six.
 STANDARD_EVENING_START = time(18, 30)
 
+# The shows that run the house's regular timing - doors 6:30, dinner 7, curtain 8 -
+# named so they are recognised however the calendar happens to record the clock.
+# Matching on start time alone is fragile: Dwight's is proof that the same production
+# gets entered against the doors on some dates and the curtain on others, and a show
+# that drifts off 18:30 silently falls back to offsets derived from whatever times it
+# does carry. Naming them means a typo in the calendar cannot quietly re-time a crew.
+STANDARD_EVENING_TITLE_KEYWORDS = (
+    "home-i-cide",
+    "forever country",
+    "shift happens",
+)
+
 
 def is_dwights_wedding(show: Show) -> bool:
     return "dwight" in (show.title or "").casefold()
+
+
+def is_standard_evening_show(show: Show) -> bool:
+    """A show on the house's regular doors-6:30 timetable."""
+    title = (show.title or "").casefold()
+    if any(keyword in title for keyword in STANDARD_EVENING_TITLE_KEYWORDS):
+        return True
+    return show.start_time == STANDARD_EVENING_START
 
 
 def call_times_for(show: Show, template_code: str) -> tuple[time, time] | None:
@@ -170,7 +190,7 @@ def call_times_for(show: Show, template_code: str) -> tuple[time, time] | None:
     code = WINDOW_ALIASES.get(template_code, template_code)
     if is_dwights_wedding(show):
         return DWIGHTS_WEDDING_WINDOWS.get(code)
-    if show.start_time == STANDARD_EVENING_START:
+    if is_standard_evening_show(show):
         return STANDARD_EVENING_WINDOWS.get(code)
     return None
 

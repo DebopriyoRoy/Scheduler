@@ -4,8 +4,16 @@ Every position's clock times come from one of three places, checked in this orde
 Source: `scheduling/services/engine.py`.
 
 1. **Dwight's Wedding** — matched on the title containing "dwight"
-2. **Ordinary evening** — matched on the show's start time being exactly **18:30**
+2. **Regular house timing** — matched on the show's **name**, or failing that on a
+   start time of exactly **18:30**
 3. **Everything else** — derived from that show's own doors-open and wrap-up times
+
+The regular-timing shows are named so they are recognised however the calendar records
+the clock: **Home Sweet Home-i-cide**, **Forever Country…In The Key Of Spirit**, and
+**Shift Happens** — all doors 6:30pm, dinner 7pm, curtain 8pm. Matching on start time
+alone is fragile; Dwight's is the proof that the same production gets entered against
+the doors on some dates and the curtain on others. A regular show that drifts off 18:30
+would otherwise fall back to derived offsets and silently re-time the whole crew.
 
 The first two are management's own call times: clock times a person is told to arrive
 at, not offsets. "Server 2 comes in at four" is the instruction that actually gets
