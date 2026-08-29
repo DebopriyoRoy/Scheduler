@@ -84,7 +84,31 @@ in a banner at the top of the schedule naming the run responsible. To re-plan th
 dates, edit the live run or supersede it first; generating a second one over the top
 cannot work.
 
-### 8. An office assignment overlaps
+### 8. The 50/50 seat cannot spare them
+
+Only two people sell 50/50, and both of them also serve. Because 50/50 is the most
+constrained slot on the board it is settled first — which once meant the raffle booked
+a server before the floor was considered. One fortnight came out with Yana on five
+50/50 seats and serving on none, while three server and five on-call server positions
+went empty.
+
+A candidate is now **withheld from the raffle** when losing them would leave that
+show's required positions (Server, Bartender, Server Manager) with fewer people than
+seats. The floor and the bar come first; the raffle takes whoever is genuinely spare,
+and goes unsold when nobody is.
+
+This is a reservation rather than an ordering. Settling 50/50 *last* would starve the
+rotation from the other side: both sellers would be taken as servers on any show with
+a seat free, and nobody would ever sell tickets.
+
+The rotation between the two sellers still applies as a tie-break once both are
+genuinely spare.
+
+**50/50 call times** follow the show's own timetable, like every other position:
+`18:30–21:30` on an ordinary evening (doors 6:30), `18:00–21:30` for Dwight's Wedding
+(doors 6:00). A show on neither timetable falls back to `18:00–21:30`.
+
+### 9. An office assignment overlaps
 
 The office rotation puts someone in the office during the shift.
 

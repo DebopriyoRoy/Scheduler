@@ -193,11 +193,30 @@ class GlobalAllocator:
         totals.dates.add(slot.show.date)
 
 
+# What a show cannot open without. A 50/50 seller is a raffle position: worth filling,
+# but the room runs without one and does not run without a floor or a bar.
+ESSENTIAL_ROLES = frozenset({"Server", "Bartender", "Server Manager"})
+
+
+def role_tier(role_name: str) -> int:
+    if role_name in ESSENTIAL_ROLES:
+        return 0
+    if role_name == "50/50":
+        return 2
+    return 1
+
+
 def slot_priority(slot: Slot) -> tuple:
     """Most-constrained-first: fewest eligible candidates wins.
 
     Scarce-skill slots are settled ahead of ordinary ones at equal candidate
     count so bar and 50/50 coverage is never spent on a general server seat.
+
+    50/50 keeps its place at the front on purpose. Both sellers also serve, so the
+    protection against the raffle emptying the floor is not this ordering - it is the
+    reservation in the engine, which refuses the raffle anyone the show's own floor
+    and bar cannot be covered without. Settling 50/50 first is what lets that check
+    see the essential slots while they are still open.
     """
     role_rank = {"50/50": 0, "Bartender": 1, "Server": 2, "Busser": 3}.get(
         slot.template.role.name, 9

@@ -119,6 +119,7 @@ class Candidate:
 # some Dwight's dates against the curtain (18:30) and some against the doors (18:00);
 # the title is the thing that reliably says which timetable applies.
 STANDARD_EVENING_WINDOWS = {
+    "fifty-fifty": (time(18, 30), time(21, 30)),
     "server-manager": (time(14, 0), time(21, 0)),
     "lead-server": (time(15, 0), time(21, 0)),
     "server-2": (time(16, 0), time(21, 30)),
@@ -130,6 +131,7 @@ STANDARD_EVENING_WINDOWS = {
 }
 
 DWIGHTS_WEDDING_WINDOWS = {
+    "fifty-fifty": (time(18, 0), time(21, 30)),
     "server-manager": (time(14, 0), time(21, 0)),
     "lead-server": (time(15, 0), time(21, 0)),
     "server-2": (time(15, 30), time(21, 30)),
@@ -184,12 +186,14 @@ def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, dat
     Module level so that filling a slot by hand starts from the same window the
     generator would have produced, instead of a second implementation drifting from it.
     """
-    if template.code == "fifty-fifty":
+    called = call_times_for(show, template.code)
+    if called is None and template.code == "fifty-fifty":
+        # A show on neither timetable: keep the long-standing default rather than
+        # deriving a raffle window from a curtain time that may be a private booking.
         start = datetime.combine(show.date, FIFTY_FIFTY_START_TIME, tzinfo=LOCAL_TIMEZONE)
         end = datetime.combine(show.date, FIFTY_FIFTY_END_TIME, tzinfo=LOCAL_TIMEZONE)
         return start, end
 
-    called = call_times_for(show, template.code)
     if called is not None:
         start_time, end_time = called
         start = datetime.combine(show.date, start_time, tzinfo=LOCAL_TIMEZONE)
@@ -602,6 +606,21 @@ class SchedulingEngine:
                 )
                 continue
 
+            if slot.template.role.name == "50/50":
+                live_candidates, spared = self._reserve_for_the_floor(
+                    slot, unfilled, live_candidates
+                )
+                for employee in spared:
+                    excluded_by_slot[slot.key][employee.display_name] = (
+                        "Needed on the floor or the bar for this show; the 50/50 seat "
+                        "cannot take the last person a required position has.",
+                    )
+                if not live_candidates:
+                    self._shortage(
+                        schedule_run, slot.show, slot.template, excluded_by_slot[slot.key]
+                    )
+                    continue
+
             remaining = {
                 employee.id: sum(1 for other in unfilled if employee in other.candidates)
                 for employee in live_candidates
@@ -644,6 +663,53 @@ class SchedulingEngine:
             for other in unfilled:
                 if other.show.id == slot.show.id and selected in other.candidates:
                     other.candidates.remove(selected)
+
+    def _reserve_for_the_floor(
+        self,
+        slot,
+        unfilled: list,
+        live_candidates: list[Employee],
+    ) -> tuple[list[Employee], list[Employee]]:
+        """Keep the raffle from taking someone a required position cannot spare.
+
+        Both 50/50 sellers also serve, and 50/50 is settled first because it is the
+        most constrained slot on the board - only two people hold the role. That
+        combination emptied the floor: across one fortnight Yana took five 50/50 seats
+        and served on none, while three server and five on-call server positions went
+        unfilled, because the raffle had already booked her by the time they were
+        settled.
+
+        The rule management actually work to is that the floor and the bar come first
+        and the raffle takes whoever is genuinely spare. So a candidate is withheld
+        when losing them would leave this show's required positions with fewer people
+        than seats - Hall's condition, counted across the pool the remaining essential
+        slots share rather than slot by slot, because those slots draw on the same
+        people.
+
+        Ordering alone cannot express this. Settling 50/50 last would starve the
+        rotation instead: both sellers would be taken as servers on every show that
+        had a seat free, and nobody would sell tickets.
+        """
+        from scheduling.services.allocator import role_tier
+
+        essential = [
+            other
+            for other in unfilled
+            if other.show.id == slot.show.id
+            and role_tier(other.template.role.name) == 0
+            and not other.is_on_call
+        ]
+        if not essential:
+            return live_candidates, []
+
+        pool = {employee.id for other in essential for employee in other.candidates}
+        kept, spared = [], []
+        for employee in live_candidates:
+            if employee.id in pool and len(pool - {employee.id}) < len(essential):
+                spared.append(employee)
+            else:
+                kept.append(employee)
+        return kept, spared
 
     def _snapshot_candidates(
         self,
