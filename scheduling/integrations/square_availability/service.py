@@ -58,17 +58,19 @@ ROSTER_EMPLOYEE_NAMES = [
 def roster_employees():
     """Everyone this application can actually put on a shift.
 
-    Square's team includes the kitchen, cleaners, managers and the owner. They are on
-    the roster so the two systems can be compared, but they hold no scheduling role,
-    and counting their empty availability would drag the completeness figure down
-    while telling nobody anything.
+    Holding a role is the test, not the exclusion flag. Square's team includes the
+    kitchen, cleaners, managers and the owner; they are on the roster so the two
+    systems can be compared, but they hold no scheduling role, so they are not synced
+    and their empty availability never drags the completeness figure down.
+
+    The flag is deliberately not consulted. A manager is excluded from the ordinary
+    rota and still holds the Server Manager position, which exists precisely for them.
+    Filtering on the flag here meant their availability was never read, so the one job
+    they are eligible for could never be filled - an exclusion from serving quietly
+    became an exclusion from managing.
     """
     return (
-        Employee.objects.filter(
-            active=True,
-            excluded_from_automatic_scheduling=False,
-            employee_roles__active=True,
-        )
+        Employee.objects.filter(active=True, employee_roles__active=True)
         .distinct()
         .order_by("display_name")
     )
