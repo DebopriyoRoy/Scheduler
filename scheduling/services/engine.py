@@ -300,6 +300,8 @@ class SchedulingEngine:
         schedule_run.full_clean()
         schedule_run.save()
 
+        self._warn_about_overlapping_rosters(schedule_run)
+
         generate_office_assignments(start_date, end_date)
         rotation = FiftyFiftyRotation()
         planned_slots: list[tuple[Show, ShiftTemplate, str]] = []
@@ -822,6 +824,47 @@ class SchedulingEngine:
             f"No eligible employee for {template.name}."
             + (f" Examples: {sample}" if sample else ""),
         )
+
+    def _warn_about_overlapping_rosters(self, schedule_run: ScheduleRun) -> None:
+        """Say plainly when these dates are already staffed by a live roster.
+
+        Nobody can work two shifts at once, so anyone already rostered on an approved
+        or synced run is refused here - correctly. But that refusal only ever appeared
+        as one line inside each unfilled position, behind a "Why?" link, so a run
+        generated over dates Square already holds looked like a broken engine: forty-six
+        shortages, every server empty, and no explanation on the page.
+
+        The overlap is a property of the whole run, so it is reported once, at the top,
+        naming the run responsible and what to do about it.
+        """
+        live = (
+            ScheduleRun.objects.filter(
+                status__in=[ScheduleRunStatus.APPROVED, ScheduleRunStatus.SYNCED_TO_SQUARE],
+                start_date__lte=schedule_run.end_date,
+                end_date__gte=schedule_run.start_date,
+            )
+            .exclude(pk=schedule_run.pk)
+            .order_by("start_date", "pk")
+        )
+        for other in live:
+            staff = (
+                ScheduleAssignment.objects.filter(schedule_run=other)
+                .values("employee")
+                .distinct()
+                .count()
+            )
+            self._warning(
+                schedule_run,
+                None,
+                WarningType.OVERLAPPING_ROSTER,
+                WarningSeverity.WARNING,
+                f"Schedule #{other.pk} ({other.get_status_display()}) already rosters "
+                f"{other.start_date:%d %b} to {other.end_date:%d %b %Y}, which overlaps "
+                f"these dates, and has {staff} member(s) of staff on it. Nobody can work "
+                f"two shifts at once, so anyone already booked there cannot be placed "
+                f"here and those positions will show as shortages. To re-plan these "
+                f"dates, edit schedule #{other.pk} instead, or supersede it first.",
+            )
 
     def _create_input_warnings(self, schedule_run: ScheduleRun, show: Show) -> None:
         if show.uses_default_guest_count:

@@ -63,6 +63,7 @@ from scheduling.models import (
     TimeOffSource,
     TimeOffStatus,
     WarningSeverity,
+    WarningType,
 )
 from scheduling.services.calendar_import import CalendarImportError, run_calendar_import
 from scheduling.services.engine import (
@@ -988,6 +989,12 @@ def schedule_detail(request, run_id):
                 schedule_run.warnings.filter(severity=WarningSeverity.ERROR, resolved=False)
                 .select_related("show")
                 .order_by("show__date", "warning_type")
+            ),
+            # Surfaced separately, above everything. An overlap explains most or all of
+            # the shortages on the page at once, and reading it off forty-six identical
+            # per-position warnings is not a reasonable thing to ask of anyone.
+            "overlapping_rosters": schedule_run.warnings.filter(
+                warning_type=WarningType.OVERLAPPING_ROSTER, resolved=False
             ),
         },
     )

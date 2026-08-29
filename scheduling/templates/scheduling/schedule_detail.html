@@ -40,6 +40,15 @@
 </div>
 
 
+{% if overlapping_rosters %}
+  {% for warning in overlapping_rosters %}
+    <div class="alert alert-warning">
+      <strong>These dates are already rostered elsewhere.</strong>
+      <div class="mt-1">{{ warning.message }}</div>
+    </div>
+  {% endfor %}
+{% endif %}
+
 {% if blocking_warnings %}
 <div class="card border-0 shadow-sm mt-4 border-start border-4 border-danger"><div class="card-body">
   <h2 class="h5 mb-1">{{ hard_errors }} thing{{ hard_errors|pluralize }} blocking approval</h2>
