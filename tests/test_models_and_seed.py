@@ -45,8 +45,9 @@ def test_staff_seed_is_idempotent_and_excludes_managers():
     assert Employee.objects.count() == 18
     # Server, Bartender, Busser, 50/50, Server Manager.
     assert Role.objects.count() == 5
-    # 22 floor qualifications plus Deborah's Server Manager one.
-    assert EmployeeRole.objects.filter(active=True).count() == 23
+    # 23 floor qualifications plus Deborah's Server Manager one. Neil counts twice:
+    # he assists at the bar and works the floor as an ordinary server.
+    assert EmployeeRole.objects.filter(active=True).count() == 24
     # John Harris stays off the roster entirely. Deborah is now on it, but only as the
     # Server Manager - she is still never a candidate for an ordinary floor shift.
     assert not Employee.objects.filter(

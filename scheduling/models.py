@@ -132,6 +132,10 @@ class WarningType(models.TextChoices):
         "Insufficient fairness history",
     )
     SERVER_MANAGER_SHORTAGE = "SERVER_MANAGER_SHORTAGE", "Server manager shortage"
+    PARTIAL_SHIFT_COVERAGE = (
+        "PARTIAL_SHIFT_COVERAGE",
+        "Shift only partly covered",
+    )
     ROLE_CONFIGURATION_ERROR = "ROLE_CONFIGURATION_ERROR", "Role configuration error"
     SQUARE_OUT_OF_DATE = (
         "SQUARE_OUT_OF_DATE",
@@ -226,6 +230,13 @@ class EmployeeRole(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(5)]
     )
     active = models.BooleanField(default=True)
+    on_call_only = models.BooleanField(
+        default=False,
+        help_text=(
+            "Qualified to assist in this role but not to hold it alone - never rostered "
+            "to a confirmed position, only to on-call cover."
+        ),
+    )
 
     class Meta:
         ordering = ["employee__display_name", "role__name"]
@@ -1069,6 +1080,46 @@ class SchedulingFairnessConfig(models.Model):
         if not config:
             config = cls.objects.create(name="Default Spirit Fairness Config", active=True)
         return config
+
+
+class Department(models.Model):
+    """A part of the business somebody works in, as management organise the staff list.
+
+    Deliberately separate from Role, which is what the scheduling engine rosters. The
+    two do not line up and should not be made to: Neil is in the Server department but
+    tends bar in the rota, the kitchen and office departments are never scheduled at
+    all, and there is no Busser department even though Busser is a scheduled role.
+    Folding one into the other would either corrupt the rota or lose the org chart.
+    """
+
+    name = models.CharField(max_length=80, unique=True)
+    display_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["display_order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class EmployeeDepartment(models.Model):
+    """Somebody's place in a department. People genuinely belong to several."""
+
+    employee = models.ForeignKey(
+        "Employee", on_delete=models.CASCADE, related_name="department_memberships"
+    )
+    department = models.ForeignKey(
+        Department, on_delete=models.CASCADE, related_name="memberships"
+    )
+    # The order management wrote them in, which is not alphabetical and carries meaning.
+    listing_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        unique_together = ("employee", "department")
+        ordering = ["listing_order", "employee__display_name"]
+
+    def __str__(self) -> str:
+        return f"{self.employee} in {self.department}"
 
 
 class EmployeeSchedulingPreference(models.Model):

@@ -5,7 +5,12 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from scheduling.exports.common import POSITION_CODES, assumptions, show_export_rows
+from scheduling.exports.common import (
+    POSITION_CODES,
+    assumptions,
+    cell_text,
+    show_export_rows,
+)
 from scheduling.models import Employee
 from scheduling.services.metrics import metrics_for_employee
 
@@ -43,6 +48,7 @@ def build_schedule_workbook(schedule_run) -> Workbook:
             "Day",
             "Show",
             "Expected Guests",
+            "Server Manager",
             "Lead Server",
             "Server 2",
             "Server 3",
@@ -55,10 +61,7 @@ def build_schedule_workbook(schedule_run) -> Workbook:
         ]
     )
     for show, assignments, warnings in show_export_rows(schedule_run):
-        people = [
-            assignments.get(code).employee.display_name if assignments.get(code) else "SHORTAGE"
-            for code in POSITION_CODES
-        ]
+        people = [cell_text(assignments.get(code)) for code in POSITION_CODES]
         schedule.append(
             [
                 show.date,
@@ -73,8 +76,14 @@ def build_schedule_workbook(schedule_run) -> Workbook:
         cell.number_format = "yyyy-mm-dd"
     _style_sheet(
         schedule,
-        {1: 13, 2: 12, 3: 32, 4: 16, **{index: 20 for index in range(5, 13)}, 13: 35},
+        {1: 13, 2: 12, 3: 32, 4: 16, **{index: 22 for index in range(5, 14)}, 14: 35},
     )
+    # Name on one line, hours beneath it - without wrapping the cell shows only the
+    # name and hides the times behind the column edge.
+    for row in schedule.iter_rows(min_row=2, min_col=5, max_col=14):
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+    schedule.row_dimensions[1].height = 30
 
     detailed = workbook.create_sheet("Detailed Assignments")
     detailed.append(

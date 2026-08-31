@@ -19,11 +19,16 @@ from scheduling.models import (
     OfficeRotationConfig,
     Role,
     ScheduleRunStatus,
+    ShiftTemplate,
     Show,
     WarningSeverity,
     WarningType,
 )
-from scheduling.services.engine import ApprovedScheduleError, SchedulingEngine
+from scheduling.services.engine import (
+    ApprovedScheduleError,
+    SchedulingEngine,
+    shift_window_for,
+)
 from scheduling.services.requirements import (
     staffing_requirements_for,
     templates_for_requirement,
@@ -1021,6 +1026,7 @@ def test_hours_changed_in_place_are_recalculated(one_show_run):
 # --- management's own call times ------------------------------------------------
 
 STANDARD_EVENING_EXPECTED = {
+    "fifty-fifty": (time(17, 45), time(20, 30)),
     "server-manager": (time(14, 0), time(21, 0)),
     "lead-server": (time(15, 0), time(21, 0)),
     "server-2": (time(16, 0), time(21, 30)),
@@ -1032,6 +1038,7 @@ STANDARD_EVENING_EXPECTED = {
 }
 
 DWIGHTS_EXPECTED = {
+    "fifty-fifty": (time(17, 30), time(20, 30)),
     "server-manager": (time(14, 0), time(21, 0)),
     "lead-server": (time(15, 0), time(21, 0)),
     "server-2": (time(15, 30), time(21, 30)),
@@ -1214,3 +1221,231 @@ def test_availability_square_actually_holds_still_counts_against_the_manager(
     # conflict, recorded by a person, and it stands.
     assert result.eligible is False
     assert any("not fully covered" in reason for reason in result.reasons)
+
+
+# --- fitting a shift to what someone can actually work ---------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("avail_start", "avail_end", "code", "expected"),
+    [
+        # Management's own examples: free 16:00-20:30 takes the front of Server 3;
+        # free 17:30-21:30 covers the whole 50/50 with nothing to trim.
+        (time(16, 0), time(20, 30), "server-3", (time(17, 30), time(20, 30))),
+        # 50/50 runs 17:45-20:30 on an ordinary evening, which 17:30-21:30 covers
+        # outright - so nothing is trimmed and she works the published window.
+        (time(17, 30), time(21, 30), "fifty-fifty", (time(17, 45), time(20, 30))),
+    ],
+)
+def test_a_shift_is_trimmed_to_the_hours_someone_is_free(
+    configured_staff, avail_start, avail_end, code, expected
+):
+    """Narrow availability earns the part of the shift it covers, not a refusal."""
+    from scheduling.models import ShiftTemplate
+    from scheduling.services.availability import LocalAvailabilityProvider
+    from scheduling.services.engine import shift_window_for
+
+    show = make_show(start_time=time(18, 30))
+    kate = Employee.objects.get(display_name="Kate")
+    EmployeeAvailability.objects.update_or_create(
+        employee=kate,
+        date=show.date,
+        defaults={
+            "availability_type": AvailabilityType.AVAILABLE_WINDOW,
+            "start_time": avail_start,
+            "end_time": avail_end,
+            "available": True,
+        },
+    )
+    start, end = shift_window_for(show, ShiftTemplate.objects.get(code=code))
+    window = LocalAvailabilityProvider().fit(kate, show.date, start.time(), end.time())
+
+    assert window is not None
+    assert (window.start_time, window.end_time) == expected
+
+
+@pytest.mark.django_db
+def test_an_overlap_under_three_hours_is_not_worth_the_trip(configured_staff):
+    from scheduling.services.availability import MIN_FITTED_SHIFT_HOURS, LocalAvailabilityProvider
+
+    assert MIN_FITTED_SHIFT_HOURS == 3.0
+    show = make_show(start_time=time(18, 30))
+    kate = Employee.objects.get(display_name="Kate")
+    EmployeeAvailability.objects.update_or_create(
+        employee=kate,
+        date=show.date,
+        defaults={
+            "availability_type": AvailabilityType.AVAILABLE_WINDOW,
+            "start_time": time(19, 30),
+            "end_time": time(21, 0),  # 1.5h of a 15:00-21:00 lead shift
+            "available": True,
+        },
+    )
+    assert LocalAvailabilityProvider().fit(kate, show.date, time(15, 0), time(21, 0)) is None
+
+
+@pytest.mark.django_db
+def test_a_part_covered_shift_says_which_hours_nobody_is_on(configured_staff):
+    """Filling a slot partly is better than leaving it empty, but it is not covering it."""
+    from scheduling.services.engine import shift_window_for
+
+    show = make_show(start_time=time(18, 30))
+    make_all_available(configured_staff, show.date)
+    kate = Employee.objects.get(display_name="Kate")
+    # She also holds the 50/50 role, which is settled first and would take her out of
+    # the running for the lead seat; this test is about the floor, so keep her on it.
+    EmployeeRole.objects.filter(employee=kate, role__name="50/50").update(active=False)
+    # Kate is the only server free at all, so the lead shift is hers or nobody's -
+    # otherwise a fully-available colleague wins it and this proves nothing.
+    others = [e for e in configured_staff if e != kate]
+    EmployeeAvailability.objects.filter(employee__in=others, date=show.date).update(
+        availability_type=AvailabilityType.UNAVAILABLE, available=False
+    )
+    EmployeeAvailability.objects.filter(employee=kate, date=show.date).update(
+        availability_type=AvailabilityType.AVAILABLE_WINDOW,
+        start_time=time(16, 0),
+        end_time=time(20, 30),
+        available=True,
+    )
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    lead = run.assignments.filter(shift_template__code="lead-server").first()
+    assert lead is not None and lead.employee == kate
+    # She works her own hours, not the call window's.
+    assert timezone.localtime(lead.start_datetime).time() == time(16, 0)
+    assert timezone.localtime(lead.end_datetime).time() == time(20, 30)
+    assert (lead.start_datetime, lead.end_datetime) != shift_window_for(show, lead.shift_template)
+
+    # And the hours nobody is on are spelled out rather than passing silently.
+    gap = run.warnings.filter(
+        warning_type=WarningType.PARTIAL_SHIFT_COVERAGE, message__contains="Kate"
+    ).first()
+    assert gap is not None
+    assert "15:00-16:00" in gap.message and "20:30-21:00" in gap.message
+
+
+@pytest.mark.django_db
+def test_separate_runs_do_not_hand_the_same_person_the_same_slot(configured_staff):
+    """Rotation across runs, which is what makes the roster stop repeating itself.
+
+    Each run used to start the whole roster at zero hours, because carry-in came from a
+    field nothing writes. The same tie-break order then won every time, so generating
+    one date at a time produced the same names in the same slots night after night.
+    """
+    dates = [date(2026, 9, 12), date(2026, 9, 19), date(2026, 9, 26)]
+    bussers = []
+    for show_date in dates:
+        show = make_show(show_date, start_time=time(18, 30))
+        make_all_available(configured_staff, show.date)
+        run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+        busser = run.assignments.filter(shift_template__code="busser").first()
+        if busser:
+            bussers.append(busser.employee.display_name)
+
+    assert len(bussers) == 3
+    assert len(set(bussers)) > 1, f"the same busser every night: {bussers}"
+
+
+@pytest.mark.django_db
+def test_call_times_are_never_trimmed_while_somebody_can_work_them(configured_staff):
+    """The published call times are the rule; fitting is only ever a fallback.
+
+    Regression: a weighted preference for full coverage let a candidate with narrow
+    availability outbid a fully available one, so shifts came out shorter than the
+    timetable management had actually set. Standby was also settled before the floor,
+    which spent the broadly-available people on on-call and left only partial cover for
+    the confirmed seats. Both are pinned here.
+    """
+    show = make_show(start_time=time(18, 30))
+    make_all_available(configured_staff, show.date)
+    # One person can only do the middle of the evening. Everyone else is free all day.
+    kate = Employee.objects.get(display_name="Kate")
+    EmployeeAvailability.objects.filter(employee=kate, date=show.date).update(
+        availability_type=AvailabilityType.AVAILABLE_WINDOW,
+        start_time=time(17, 0),
+        end_time=time(20, 30),
+        available=True,
+    )
+    run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+
+    for assignment in run.assignments.select_related("shift_template"):
+        expected_start, expected_end = shift_window_for(show, assignment.shift_template)
+        assert (assignment.start_datetime, assignment.end_datetime) == (
+            expected_start,
+            expected_end,
+        ), f"{assignment.shift_template.name} was trimmed with full cover available"
+    assert not run.warnings.filter(warning_type=WarningType.PARTIAL_SHIFT_COVERAGE).exists()
+
+
+@pytest.mark.django_db
+def test_the_floor_is_staffed_before_standby(configured_staff):
+    """A confirmed seat gets first call on anyone who can work it; on-call takes what is left."""
+    from scheduling.services.allocator import Slot, slot_priority
+
+    show = make_show(start_time=time(18, 30))
+    templates = {t.code: t for t in ShiftTemplate.objects.all()}
+
+    def slot_for(code, candidate_count):
+        template = templates[code]
+        start, end = shift_window_for(show, template)
+        return Slot(
+            show=show, template=template, start=start, end=end,
+            hours=Decimal("6.00"),
+            is_on_call=template.assignment_type == AssignmentType.ON_CALL,
+            candidates=[None] * candidate_count,
+        )
+
+    # Standby with a tiny pool still waits for a confirmed seat with a big one.
+    standby = slot_for("on-call-server", 1)
+    floor = slot_for("server-3", 9)
+    assert slot_priority(floor) < slot_priority(standby)
+
+
+@pytest.mark.django_db
+def test_everyone_available_reaches_a_fair_month_of_confirmed_shifts(configured_staff):
+    """Nobody available should be left on standby all month.
+
+    Balancing hours alone kept handing the confirmed seats to whoever's availability
+    covered the widest windows, so a person free only for the middle of the evening
+    collected on-call after on-call and almost no real shifts.
+    """
+    from scheduling.services.allocator import MONTHLY_CONFIRMED_SHIFT_TARGET
+
+    show_dates = [date(2026, 9, 5) + timedelta(days=7 * i) for i in range(8)]
+    confirmed = {}
+    for show_date in show_dates:
+        show = make_show(show_date, start_time=time(18, 30))
+        make_all_available(configured_staff, show.date)
+        # One person can only ever work the middle of the evening.
+        molly = Employee.objects.get(display_name="Molly Rittwage")
+        EmployeeAvailability.objects.filter(employee=molly, date=show.date).update(
+            availability_type=AvailabilityType.AVAILABLE_WINDOW,
+            start_time=time(17, 30),
+            end_time=time(21, 30),
+            available=True,
+        )
+        run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+        for assignment in run.assignments.filter(assignment_type=AssignmentType.CONFIRMED):
+            name = assignment.employee.display_name
+            confirmed[name] = confirmed.get(name, 0) + 1
+
+    assert confirmed.get("Molly Rittwage", 0) >= MONTHLY_CONFIRMED_SHIFT_TARGET, (
+        f"narrow availability still means almost no confirmed work: {confirmed}"
+    )
+
+
+@pytest.mark.django_db
+def test_a_position_does_not_stay_with_one_person_show_after_show(configured_staff):
+    """Whoever starts at three should change from night to night."""
+    starters = []
+    for offset in range(6):
+        show = make_show(date(2026, 9, 5) + timedelta(days=7 * offset), start_time=time(18, 30))
+        make_all_available(configured_staff, show.date)
+        run = SchedulingEngine().generate(show.date, show.date, allow_shortages=True)
+        lead = run.assignments.filter(shift_template__code="lead-server").first()
+        if lead:
+            starters.append(lead.employee.display_name)
+
+    assert len(starters) >= 5
+    assert len(set(starters)) >= 3, f"the same few people always start: {starters}"

@@ -33,6 +33,19 @@ WEIGHT_OPPORTUNITY_SCARCITY = 0.20
 WEIGHT_SHIFT_COUNT_DEFICIT = 0.15
 WEIGHT_CARRY_IN_HISTORY = 0.12
 WEIGHT_ROLE_PREFERENCE = 0.08
+WEIGHT_FULL_COVERAGE = 0.06
+
+# Nobody should hold the same position show after show. This penalises repeating a
+# position you have had recently, which is what turns "Olena is Server 1" into a rota
+# where the person who starts changes from night to night.
+PENALTY_SAME_POSITION = 0.22
+
+# Everybody who is available should get real shifts, not just whoever happens to fit
+# the widest windows. Anyone below the monthly floor is pushed up the order until they
+# reach it; past it the boost is gone, so it lifts people up rather than holding
+# anyone back.
+WEIGHT_MONTHLY_FLOOR = 0.35
+MONTHLY_CONFIRMED_SHIFT_TARGET = 3
 WEIGHT_WEEKEND_BALANCE = 0.05
 
 PENALTY_CONSECUTIVE_NIGHT = 0.12
@@ -52,6 +65,24 @@ class Slot:
     hours: Decimal
     is_on_call: bool
     candidates: list[Employee] = field(default_factory=list)
+    # The slice each candidate can actually work, keyed by employee id. Absent means
+    # they cover the whole call window; present and shorter means they take part of it.
+    fitted: dict[int, tuple[object, object]] = field(default_factory=dict)
+
+    def window_for(self, employee_id: int) -> tuple[object, object]:
+        return self.fitted.get(employee_id, (self.start, self.end))
+
+    def hours_for(self, employee_id: int) -> Decimal:
+        start, end = self.window_for(employee_id)
+        return Decimal(str(round((end - start).total_seconds() / 3600, 2)))
+
+    def coverage_for(self, employee_id: int) -> float:
+        """0.0-1.0 share of the call window this employee covers."""
+        full = (self.end - self.start).total_seconds()
+        if full <= 0:
+            return 1.0
+        start, end = self.window_for(employee_id)
+        return (end - start).total_seconds() / full
 
     @property
     def key(self) -> tuple[int, int]:
@@ -67,6 +98,7 @@ class RunningTotals:
     shift_count: int = 0
     weekend_count: int = 0
     dates: set[date] = field(default_factory=set)
+    templates: list[int] = field(default_factory=list)
 
 
 class GlobalAllocator:
@@ -76,6 +108,8 @@ class GlobalAllocator:
         on_call_target_hours: dict[int, Decimal] | None = None,
         carry_in_hours: dict[int, Decimal] | None = None,
         preferred_role_ids: dict[int, int] | None = None,
+        recent_position_counts: dict[tuple[int, int], int] | None = None,
+        recent_shift_counts: dict[int, int] | None = None,
     ):
         self.targets = targets
         self.on_call_targets = on_call_target_hours or {}
@@ -86,6 +120,10 @@ class GlobalAllocator:
         # that out. A nudge, never a gate: bar cover is still reserved first, so she
         # will still take the bar when nobody else can.
         self.preferred_role_ids = preferred_role_ids or {}
+        # (employee id, shift template id) -> times held recently, and total confirmed
+        # shifts recently. Both come from real assignments, not a static field.
+        self.recent_position_counts = recent_position_counts or {}
+        self.recent_shift_counts = recent_shift_counts or {}
         self._max_carry_in = float(max(self.carry_in_hours.values(), default=Decimal("0.00")))
 
     def carry_in_fairness(self, employee_id: int) -> float:
@@ -101,6 +139,12 @@ class GlobalAllocator:
             return 0.0
         worked = float(self.carry_in_hours.get(employee_id, Decimal("0.00")))
         return 1.0 - min(worked / self._max_carry_in, 1.0)
+
+    def confirmed_shifts_so_far(self, employee_id: int) -> int:
+        """Real shifts worked recently, including this run. Standby does not count."""
+        return self.recent_shift_counts.get(employee_id, 0) + self.totals_for(
+            employee_id
+        ).shift_count
 
     def totals_for(self, employee_id: int) -> RunningTotals:
         if employee_id not in self.totals:
@@ -166,6 +210,26 @@ class GlobalAllocator:
         # management's decision is that every server competes on the same footing, so
         # the only things separating them are hours worked, scarcity and rest.
 
+        # Someone who can work the whole call window is worth a little more than
+        # someone who can work part of it - the floor stays covered later. Deliberately
+        # a small term: it settles close calls without letting narrow availability lock
+        # a person out of the roster, which is what a hard full-coverage rule did.
+        score += WEIGHT_FULL_COVERAGE * slot.coverage_for(employee.id)
+
+        # Rotate the positions themselves. Balancing hours alone still lets one person
+        # own "the shift that starts at three" indefinitely, because taking the same
+        # slot every week balances perfectly well.
+        repeats = self.recent_position_counts.get((employee.id, slot.template.id), 0)
+        repeats += totals.templates.count(slot.template.id)
+        score -= PENALTY_SAME_POSITION * min(repeats, 3) / 3.0
+
+        # Anyone short of a fair month's work comes first, so the rota reaches past the
+        # handful of people whose availability happens to fit the widest windows.
+        shifts_so_far = self.recent_shift_counts.get(employee.id, 0) + totals.shift_count
+        if not slot.is_on_call and shifts_so_far < MONTHLY_CONFIRMED_SHIFT_TARGET:
+            short_by = MONTHLY_CONFIRMED_SHIFT_TARGET - shifts_so_far
+            score += WEIGHT_MONTHLY_FLOOR * (short_by / MONTHLY_CONFIRMED_SHIFT_TARGET)
+
         preferred = self.preferred_role_ids.get(employee.id)
         if preferred is not None and preferred == slot.template.role_id:
             score += WEIGHT_ROLE_PREFERENCE
@@ -183,24 +247,32 @@ class GlobalAllocator:
 
     def commit(self, employee: Employee, slot: Slot) -> None:
         totals = self.totals_for(employee.id)
+        hours = slot.hours_for(employee.id)
         if slot.is_on_call:
-            totals.on_call_hours += slot.hours
+            totals.on_call_hours += hours
         else:
-            totals.paid_hours += slot.hours
+            totals.paid_hours += hours
         totals.shift_count += 1
+        totals.templates.append(slot.template.id)
         if slot.show.date.weekday() >= 4:
             totals.weekend_count += 1
         totals.dates.add(slot.show.date)
 
 
 def slot_priority(slot: Slot) -> tuple:
-    """Most-constrained-first: fewest eligible candidates wins.
+    """Working shifts first, then most-constrained-first within them.
 
-    Scarce-skill slots are settled ahead of ordinary ones at equal candidate
-    count so bar and 50/50 coverage is never spent on a general server seat.
+    Standby is settled last, after every shift somebody actually works. It used to be
+    ordered purely by candidate count, which put on-call ahead of the floor whenever
+    fewer people qualified for it - so the one broadly-available server got spent on
+    standby, and the confirmed seats that were left over went to whoever could work
+    part of them. The floor gets first call on the people who can cover it.
+
+    Within a tier, scarce-skill slots still settle ahead of ordinary ones at equal
+    candidate count, so bar and 50/50 coverage is never spent on a general server seat.
     """
     role_rank = {"50/50": 0, "Bartender": 1, "Server": 2, "Busser": 3}.get(
         slot.template.role.name, 9
     )
     on_call_rank = 1 if slot.template.assignment_type == AssignmentType.ON_CALL else 0
-    return (len(slot.candidates), on_call_rank, role_rank, slot.show.date, slot.template.id)
+    return (on_call_rank, len(slot.candidates), role_rank, slot.show.date, slot.template.id)

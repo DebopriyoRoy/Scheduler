@@ -1,3 +1,4 @@
+import re
 from datetime import date, time
 from io import BytesIO
 
@@ -6,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import override_settings
+from django.utils import timezone
 from openpyxl import load_workbook
 
 from scheduling.exports.csv_export import detailed_schedule_csv
@@ -167,6 +169,54 @@ def test_excel_csv_and_pdf_exports_are_complete(staff_and_config):
     pdf = schedule_pdf_bytes(run)
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 3000
+
+
+@pytest.mark.django_db
+def test_the_exported_rota_carries_every_position_and_its_hours(staff_and_config):
+    """A printed rota has to say when people come in, not just who is on.
+
+    Both exports listed names alone and left the Server Manager column out entirely,
+    so a printed sheet showed one fewer person than the schedule on screen and none of
+    the call times the whole timetable exists to communicate.
+    """
+    from scheduling.exports.common import cell_text
+
+    run, _show = generated_run(staff_and_config)
+    sheet = load_workbook(BytesIO(schedule_workbook_bytes(run)), data_only=False)["Schedule"]
+
+    headers = [cell.value for cell in sheet[1]]
+    assert headers[4:13] == [
+        "Server Manager",
+        "Lead Server",
+        "Server 2",
+        "Server 3",
+        "On-Call Server",
+        "Bartender",
+        "On-Call Bartender",
+        "Busser",
+        "50/50",
+    ]
+
+    # Every filled cell reads "Name" then the hours that person actually works.
+    filled = 0
+    for cell in sheet[2][4:13]:
+        value = cell.value
+        if value == "SHORTAGE":
+            continue
+        name, _, hours = value.partition("\n")
+        assert name.strip(), f"no name in {value!r}"
+        assert re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", hours), f"no hours in {value!r}"
+        filled += 1
+    assert filled >= 7
+
+    # The hours come from the assignment, so a trimmed shift prints its real hours.
+    manager = run.assignments.get(shift_template__code="server-manager")
+    assert cell_text(manager) == (
+        f"{manager.employee.display_name}\n"
+        f"{timezone.localtime(manager.start_datetime):%H:%M}-"
+        f"{timezone.localtime(manager.end_datetime):%H:%M}"
+    )
+    assert cell_text(None) == "SHORTAGE"
 
 
 @pytest.mark.django_db
@@ -398,3 +448,185 @@ def test_import_still_separates_two_shows_on_the_same_date():
     assert Show.objects.filter(date=date(2026, 9, 12)).count() == 2
     matinee.refresh_from_db()
     assert matinee.title == "Ugly Stick Workshop"
+
+
+@pytest.mark.django_db
+def test_replacing_with_someone_already_on_the_show_moves_them(staff_and_config):
+    """Putting a person on a second position means moving them, not cloning them.
+
+    This used to be refused outright - "already assigned another role for this show" -
+    which is the engine arguing with a decision the manager has already made.
+    """
+    from scheduling.models import SchedulingWarning
+    from scheduling.services.workflow import override_assignment
+
+    run, show = generated_run(staff_and_config)
+    target = run.assignments.get(shift_template__code="bartender")
+    # Somebody already on this show who can actually hold the bar - the on-call
+    # bartender assists there and is barred from the confirmed position by design.
+    mover = next(
+        row
+        for row in run.assignments.exclude(pk=target.pk).filter(show=show)
+        if row.employee.employee_roles.filter(
+            role__name="Bartender", active=True, on_call_only=False
+        ).exists()
+    )
+    moved_person, old_slot = mover.employee, mover.shift_template.name
+
+    override_assignment(target, moved_person, "covering the bar tonight")
+
+    target.refresh_from_db()
+    assert target.employee == moved_person
+    # They hold the new position and only the new position.
+    assert run.assignments.filter(show=show, employee=moved_person).count() == 1
+    assert not run.assignments.filter(pk=mover.pk).exists()
+    assert old_slot in target.selection_reason
+    assert "now unfilled" in target.selection_reason
+
+    # The slot they left is reported, not silently dropped.
+    gap = SchedulingWarning.objects.filter(
+        schedule_run=run, show=show, severity=WarningSeverity.ERROR
+    ).order_by("-id").first()
+    assert gap is not None
+    assert old_slot in gap.message
+    assert moved_person.display_name in gap.message
+
+
+@pytest.mark.django_db
+def test_a_move_still_has_to_pass_the_real_checks(staff_and_config):
+    """Moving somebody is not a way around time off, qualification or availability."""
+    from scheduling.models import EmployeeTimeOff, TimeOffStatus
+    from scheduling.services.workflow import override_assignment
+
+    run, show = generated_run(staff_and_config)
+    target = run.assignments.get(shift_template__code="bartender")
+    mover = next(
+        row
+        for row in run.assignments.exclude(pk=target.pk).filter(show=show)
+        if row.employee.employee_roles.filter(
+            role__name="Bartender", active=True, on_call_only=False
+        ).exists()
+    )
+    EmployeeTimeOff.objects.create(
+        employee=mover.employee,
+        start_date=show.date,
+        end_date=show.date,
+        status=TimeOffStatus.APPROVED,
+        reason="Out of province",
+    )
+
+    with pytest.raises(ValidationError, match="Approved time off"):
+        override_assignment(target, mover.employee, "covering the bar tonight")
+
+    # Nothing moved, and their original shift is untouched.
+    assert run.assignments.filter(pk=mover.pk).exists()
+
+
+@pytest.mark.django_db
+def test_two_people_on_one_show_can_swap_positions(staff_and_config):
+    """Trading two shifts is one decision, so it is one action.
+
+    Without it the only route was to empty one position, fill the other, then remember
+    to come back - with a hole in the roster in between.
+    """
+    from scheduling.models import SchedulingWarning
+    from scheduling.services.workflow import override_assignment
+
+    run, show = generated_run(staff_and_config)
+    first = run.assignments.get(shift_template__code="lead-server")
+    second = run.assignments.get(shift_template__code="server-2")
+    first_person, second_person = first.employee, second.employee
+    first_window = (first.start_datetime, first.end_datetime)
+    second_window = (second.start_datetime, second.end_datetime)
+
+    override_assignment(first, second_person, "trading the two server shifts", swap=True)
+
+    first.refresh_from_db()
+    # The row for the second position is rebuilt rather than updated - both uniqueness
+    # rules are database constraints and a straight swap breaks them mid-write - so it
+    # is re-read by position, not by id.
+    second = run.assignments.get(shift_template__code="server-2")
+    assert first.employee == second_person
+    assert second.employee == first_person
+    # Each takes the hours of the position, not of the person.
+    assert (first.start_datetime, first.end_datetime) == first_window
+    assert (second.start_datetime, second.end_datetime) == second_window
+    # A swap leaves no hole, so nothing is reported as vacated.
+    assert not SchedulingWarning.objects.filter(
+        schedule_run=run, show=show, message__contains="was moved"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_someone_who_only_assists_in_a_role_never_holds_it(staff_and_config):
+    """Neil backs the bartender up; he does not open or close the bar himself."""
+    from scheduling.models import EmployeeRole
+    from scheduling.services.workflow import override_assignment
+
+    run, _show = generated_run(staff_and_config)
+    assistant = EmployeeRole.objects.filter(
+        role__name="Bartender", on_call_only=True, active=True
+    ).first()
+    assert assistant is not None, "the seed should mark the bar assistant on-call only"
+
+    # Never rostered to the confirmed position by the engine...
+    confirmed = run.assignments.filter(shift_template__code="bartender").first()
+    if confirmed:
+        assert confirmed.employee != assistant.employee
+
+    # ...and not placeable there by hand either.
+    with pytest.raises(ValidationError, match="on-call support only"):
+        override_assignment(confirmed, assistant.employee, "cover the bar tonight")
+
+
+@pytest.mark.django_db
+def test_a_bar_restriction_does_not_follow_someone_onto_the_floor(staff_and_config):
+    """Neil assists at the bar but is an ordinary server.
+
+    The restriction is held per role, so qualifying him for a second role leaves the
+    first one's limit exactly where it was. If it were held per person, putting him on
+    the floor would either drag the bar limit with it or quietly lift it.
+    """
+    from scheduling.models import EmployeeRole, Role, ScheduleRun, ShiftTemplate
+    from scheduling.services.eligibility import EligibilityService
+    from scheduling.services.engine import shift_window_for
+
+    _generated, show = generated_run(staff_and_config)
+    # A bare run: in a generated one he already holds a shift, and would be judged
+    # ineligible for clashing with himself rather than for the reason under test.
+    run = ScheduleRun.objects.create(
+        start_date=show.date, end_date=show.date, status=ScheduleRunStatus.DRAFT
+    )
+    assistant = EmployeeRole.objects.get(
+        employee__display_name="Neil Bobbit", role__name="Bartender"
+    )
+    assert assistant.on_call_only is True
+
+    floor = EmployeeRole.objects.get(
+        employee__display_name="Neil Bobbit", role__name="Server"
+    )
+    assert floor.active is True
+    assert floor.on_call_only is False, "the bar limit must not follow him onto the floor"
+
+    service = EligibilityService()
+
+    def eligible(code, role_name):
+        template = ShiftTemplate.objects.get(code=code)
+        start, end = shift_window_for(show, template)
+        return service.evaluate(
+            assistant.employee,
+            Role.objects.get(name=role_name),
+            show,
+            template,
+            run,
+            start,
+            end,
+        )
+
+    # He can hold a confirmed floor position...
+    assert eligible("lead-server", "Server").eligible is True
+    assert eligible("server-3", "Server").eligible is True
+    # ...and still cannot hold the bar on his own.
+    bar = eligible("bartender", "Bartender")
+    assert bar.eligible is False
+    assert any("on-call support only" in reason for reason in bar.reasons)

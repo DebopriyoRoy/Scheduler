@@ -87,6 +87,21 @@
   </div>
 {% endif %}
 
+<form method="get" class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <label for="department" class="fw-medium mb-0">Department</label>
+  <select id="department" name="department" class="form-select" style="max-width:20rem"
+          onchange="this.form.submit()">
+    <option value="">All departments</option>
+    {% for department in departments %}
+      <option value="{{ department.name }}"{% if department.name == selected_department %} selected{% endif %}>{{ department.name }}</option>
+    {% endfor %}
+  </select>
+  {% if selected_department %}
+    <a href="{% url 'employees' %}" class="btn btn-sm btn-outline-secondary">Show all</a>
+  {% endif %}
+  <span class="text-secondary small">People work in more than one department, so the same name appears under each.</span>
+</form>
+
 <div class="card border-0 shadow-sm"><div class="table-responsive">
 <table class="table table-hover align-middle mb-0">
   <thead class="table-light">
@@ -99,7 +114,14 @@
     </tr>
   </thead>
   <tbody>
-    {% for row in rows %}
+    {% for group in grouped %}
+      <tr class="table-secondary">
+        <th colspan="{{ weekdays|length|add:4 }}" class="py-2">
+          {% if group.department %}{{ group.department.name }}{% else %}No department{% endif %}
+          <span class="badge text-bg-light border ms-1">{{ group.rows|length }}</span>
+        </th>
+      </tr>
+    {% for row in group.rows %}
       <tr>
         <td class="fw-medium">
           {{ row.employee.display_name }}
@@ -124,8 +146,9 @@
         <td>{% if row.square_mapped %}<span class="badge text-bg-light border">Mapped</span>{% else %}<span class="text-secondary small">Not mapped</span>{% endif %}</td>
         <td>{% if row.employee.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Inactive</span>{% endif %}</td>
       </tr>
+    {% endfor %}
     {% empty %}
-      <tr><td colspan="12" class="text-center text-secondary py-5">No employees have been seeded.</td></tr>
+      <tr><td colspan="12" class="text-center text-secondary py-5">No staff in this department.</td></tr>
     {% endfor %}
   </tbody>
 </table>

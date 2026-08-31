@@ -41,6 +41,7 @@ from scheduling.models import (
     DEFAULT_EXPECTED_GUESTS,
     AvailabilityType,
     CalendarSyncRun,
+    Department,
     Employee,
     EmployeeAvailability,
     EmployeeTimeOff,
@@ -182,9 +183,16 @@ def employees(request):
 
     WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
-    staff = list(
-        Employee.objects.prefetch_related("employee_roles__role").order_by("display_name")
-    )
+    departments = list(Department.objects.all())
+    selected_department = (request.GET.get("department") or "").strip()
+    staff_query = Employee.objects.prefetch_related(
+        "employee_roles__role", "department_memberships__department"
+    ).order_by("display_name")
+    if selected_department:
+        staff_query = staff_query.filter(
+            department_memberships__department__name=selected_department
+        )
+    staff = list(staff_query.distinct())
 
     # The most recent entry for each weekday, not the most frequent one. Availability
     # is stored per date and only the dates a sync covers get refreshed, so history
@@ -297,8 +305,31 @@ def employees(request):
                 "days_known": known,
                 "roles": list(employee.employee_roles.all()),
                 "square_mapped": employee.id in mapped_ids,
+                "departments": [
+                    m.department.name for m in employee.department_memberships.all()
+                ],
             }
         )
+
+    # The same person genuinely belongs to several departments, so a person appears
+    # under each one they are in. That is the staff list management keep, not
+    # duplication to be tidied away.
+    rows_by_employee = {r["employee"].id: r for r in rows}
+    grouped = []
+    for department in departments:
+        if selected_department and department.name != selected_department:
+            continue
+        members = [
+            rows_by_employee[m.employee_id]
+            for m in department.memberships.select_related("employee").all()
+            if m.employee_id in rows_by_employee
+        ]
+        if members:
+            grouped.append({"department": department, "rows": members})
+    placed = {m.employee_id for d in departments for m in d.memberships.all()}
+    unplaced = [r for r in rows if r["employee"].id not in placed]
+    if unplaced and not selected_department:
+        grouped.append({"department": None, "rows": unplaced})
 
     from scheduling.integrations.square_session import session_status
 
@@ -310,6 +341,9 @@ def employees(request):
         "scheduling/employees.html",
         {
             "rows": rows,
+            "grouped": grouped,
+            "departments": departments,
+            "selected_department": selected_department,
             "weekdays": WEEKDAYS,
             "no_availability": [r["employee"].display_name for r in rows if not r["days_known"]],
             "session_connected": session.connected,
@@ -934,6 +968,7 @@ def schedule_generate(request):
 
 def _schedule_rows(schedule_run: ScheduleRun) -> list[dict]:
     codes = (
+        "server-manager",
         "lead-server",
         "server-2",
         "server-3",
@@ -970,11 +1005,25 @@ def schedule_detail(request, run_id):
         metrics_for_employee(employee, schedule_run)
         for employee in Employee.objects.filter(active=True)
     ]
+    # Where the shows in this run actually came from. Without this the page fell back
+    # to a flat "DEMO / SEED" badge whenever no snapshot was linked, which reads as
+    # "these shows are made up" even when every one of them was imported from the live
+    # site. The snapshot records the pull; the shows record their own origin.
+    imported_shows = Show.objects.filter(
+        date__range=(schedule_run.start_date, schedule_run.end_date),
+        active=True,
+        source=Show.Source.CALENDAR_IMPORT,
+    )
+    calendar_origin = (
+        imported_shows.exclude(source_url="").values_list("source_url", flat=True).first()
+    )
     return render(
         request,
         "scheduling/schedule_detail.html",
         {
             "schedule_run": schedule_run,
+            "imported_show_count": imported_shows.count(),
+            "calendar_origin": calendar_origin,
             "schedule_rows": _schedule_rows(schedule_run),
             "metrics": metrics,
             "hard_errors": schedule_run.warnings.filter(
@@ -1010,9 +1059,17 @@ def schedule_override(request, assignment_id):
                 form.cleaned_data["override_reason"],
                 start_time=form.cleaned_data["start_time"],
                 end_time=form.cleaned_data["end_time"],
+                swap=form.cleaned_data["swap"],
             )
+            assignment.refresh_from_db()
             messages.success(
-                request, f"Overrode {assignment.shift_template.name} with an audit reason."
+                request,
+                f"{assignment.shift_template.name} is now {assignment.employee.display_name}."
+                + (
+                    " Their positions were swapped."
+                    if form.cleaned_data["swap"]
+                    else " Recorded with an audit reason."
+                ),
             )
             return redirect("schedule_detail", run_id=assignment.schedule_run_id)
         except ValidationError as exc:
@@ -1020,7 +1077,16 @@ def schedule_override(request, assignment_id):
     return render(
         request,
         "scheduling/schedule_override.html",
-        {"assignment": assignment, "form": form},
+        {
+            "assignment": assignment,
+            "form": form,
+            # Named so the page can say who a swap is even possible with.
+            "swappable_rows": [
+                {"name": employee.display_name, "slot": form.swappable[employee.id]}
+                for employee in form.fields["employee"].queryset
+                if employee.id in form.swappable
+            ],
+        },
     )
 
 
