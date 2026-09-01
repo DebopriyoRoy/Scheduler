@@ -78,10 +78,32 @@ class OverrideAssignmentForm(forms.Form):
         help_text="Local time. Leave as-is to keep the generated shift window.",
     )
     end_time = forms.TimeField(widget=TimeInput(), required=False)
+    swap = forms.BooleanField(
+        required=False,
+        label="Swap positions",
+        help_text=(
+            "Only when the person you pick is already working this show. They take this "
+            "shift and the person currently on it takes theirs, each on the other's hours. "
+            "Leave unticked to move them here and leave their old position unfilled."
+        ),
+    )
     override_reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), min_length=5)
 
     def __init__(self, *args, assignment=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # Who is already on this show, so the page can say what a swap would do.
+        self.swappable = {}
+        if assignment is not None:
+            from scheduling.models import ScheduleAssignment
+
+            self.swappable = {
+                row.employee_id: row.shift_template.name
+                for row in ScheduleAssignment.objects.filter(
+                    schedule_run=assignment.schedule_run, show=assignment.show
+                )
+                .exclude(pk=assignment.pk)
+                .select_related("shift_template")
+            }
         if assignment is not None:
             self.fields["employee"].queryset = (
                 Employee.objects.filter(

@@ -1,6 +1,11 @@
+from django.utils import timezone
+
 from scheduling.models import Show
 
 POSITION_CODES = (
+    # The Server Manager was missing from both exports, so a printed rota showed one
+    # fewer person than the schedule on screen actually rosters.
+    "server-manager",
     "lead-server",
     "server-2",
     "server-3",
@@ -28,6 +33,26 @@ def show_export_rows(schedule_run):
         warnings = schedule_run.warnings.filter(show=show, resolved=False)
         rows.append((show, assignments, list(warnings)))
     return rows
+
+
+def cell_lines(assignment) -> tuple[str, str]:
+    """A person and the hours they actually work, for one cell of the rota grid.
+
+    The exports listed names alone, which is not a rota anybody can work from: the
+    whole point of the call times is that Server 1 comes in at three and Server 3 at
+    half five. The hours here are the assignment's own, so a shift trimmed to somebody's
+    availability prints the hours they are really in for, not the position's default.
+    """
+    if assignment is None:
+        return ("SHORTAGE", "")
+    start = timezone.localtime(assignment.start_datetime)
+    end = timezone.localtime(assignment.end_datetime)
+    return (assignment.employee.display_name, f"{start:%H:%M}-{end:%H:%M}")
+
+
+def cell_text(assignment) -> str:
+    name, hours = cell_lines(assignment)
+    return f"{name}\n{hours}" if hours else name
 
 
 def assumptions(schedule_run) -> list[tuple[str, str]]:

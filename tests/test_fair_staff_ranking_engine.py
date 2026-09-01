@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -19,7 +19,7 @@ from scheduling.models import (
     ShiftTemplate,
     Show,
 )
-from scheduling.services.engine import SchedulingEngine
+from scheduling.services.engine import SchedulingEngine, shift_window_for
 from scheduling.services.fairness import FairnessService
 
 
@@ -379,7 +379,7 @@ def test_manager_exclusion_regression():
     schedule_run = ScheduleRun.objects.create(
         start_date=date(2026, 9, 12), end_date=date(2026, 9, 12)
     )
-    candidates, excluded = engine._eligible_candidates(schedule_run, show, template)
+    candidates, excluded, _fitted = engine._eligible_candidates(schedule_run, show, template)
 
     candidate_names = [c.employee.display_name for c in candidates]
     assert "Deborah Sweetapple" not in candidate_names
@@ -389,8 +389,13 @@ def test_manager_exclusion_regression():
 
 
 @pytest.mark.django_db
-def test_availability_hard_filter_regression():
-    """Verify partial availability window (17:30–21:30) returns INELIGIBLE."""
+def test_partial_availability_is_fitted_rather_than_rejected():
+    """Someone free for part of a shift takes that part, instead of being turned away.
+
+    This used to assert the opposite: a window that did not cover the call time end to
+    end was a hard no, which is how people with narrow availability ended up never
+    being rostered at all. A human scheduler puts them on for the hours they have.
+    """
     server_role, _ = Role.objects.get_or_create(name="Server")
     emp = Employee.objects.create(display_name="Partial Avail Server", active=True)
     EmployeeRole.objects.create(employee=emp, role=server_role, capability_level=3, active=True)
@@ -419,9 +424,52 @@ def test_availability_hard_filter_regression():
     schedule_run = ScheduleRun.objects.create(
         start_date=date(2026, 9, 12), end_date=date(2026, 9, 12)
     )
-    candidates, excluded = engine._eligible_candidates(schedule_run, show, template)
+    candidates, excluded, fitted = engine._eligible_candidates(schedule_run, show, template)
 
     candidate_names = [c.employee.display_name for c in candidates]
-    assert "Partial Avail Server" not in candidate_names
-    assert "Partial Avail Server" in excluded
-    assert any("not fully covered" in reason for reason in excluded["Partial Avail Server"])
+    assert "Partial Avail Server" in candidate_names
+    assert "Partial Avail Server" not in excluded
+
+    # The window handed back sits inside her availability, never outside it.
+    start, end = fitted[emp.id]
+    assert start.time() >= time(17, 30)
+    assert end.time() <= time(21, 30)
+    assert (end - start).total_seconds() / 3600 >= 3.0
+
+
+@pytest.mark.django_db
+def test_an_overlap_too_short_to_be_worth_the_trip_is_still_refused():
+    """Fitting is not a free pass: below the minimum the shift is not offered."""
+    server_role, _ = Role.objects.get_or_create(name="Server")
+    emp = Employee.objects.create(display_name="Barely Free Server", active=True)
+    EmployeeRole.objects.create(employee=emp, role=server_role, capability_level=3, active=True)
+
+    show = Show.objects.create(title="Show Short", date=date(2026, 9, 12), active=True)
+    template = ShiftTemplate.objects.get_or_create(
+        code="server-test-short",
+        name="Server Test Short",
+        role=server_role,
+        assignment_type=AssignmentType.CONFIRMED,
+        start_time=time(17, 0),
+        end_time=time(23, 0),
+        scheduled_paid_hours=Decimal("6.00"),
+    )[0]
+    start, end = shift_window_for(show, template)
+
+    # Free for only the last 90 minutes of whatever window this shift works out to.
+    EmployeeAvailability.objects.create(
+        employee=emp,
+        date=show.date,
+        availability_type=AvailabilityType.AVAILABLE_WINDOW,
+        start_time=(end - timedelta(minutes=90)).time(),
+        end_time=end.time(),
+    )
+
+    engine = SchedulingEngine()
+    schedule_run = ScheduleRun.objects.create(
+        start_date=date(2026, 9, 12), end_date=date(2026, 9, 12)
+    )
+    candidates, excluded, _fitted = engine._eligible_candidates(schedule_run, show, template)
+
+    assert "Barely Free Server" not in [c.employee.display_name for c in candidates]
+    assert "Barely Free Server" in excluded

@@ -11,6 +11,7 @@ from scheduling.models import (
     ScheduleRun,
     ScheduleRunStatus,
     SchedulingWarning,
+    SquareSyncAuditLog,
     WarningSeverity,
 )
 from scheduling.services.eligibility import EligibilityService
@@ -24,6 +25,7 @@ def override_assignment(
     *,
     start_time=None,
     end_time=None,
+    swap: bool = False,
 ) -> ScheduleAssignment:
     """Replace the person on a shift, optionally moving the shift window with them.
 
@@ -40,6 +42,29 @@ def override_assignment(
 
     start_datetime, end_datetime = _shift_window(assignment, start_time, end_time)
 
+    # Somebody already working this show can be moved onto this shift. Refusing that as
+    # "already assigned another role for this show" is the engine arguing with a
+    # decision the manager has already made: putting Daniel behind the bar means taking
+    # him off on-call, not cloning him. The old slot is vacated as part of the move and
+    # reported as a shortage, so the hole it leaves is visible rather than silent.
+    vacating = (
+        ScheduleAssignment.objects.filter(
+            schedule_run=assignment.schedule_run,
+            show=assignment.show,
+            employee=replacement,
+        )
+        .exclude(pk=assignment.pk)
+        .select_related("shift_template", "role")
+        .first()
+    )
+
+    # A swap exchanges two people who are both already on this show: the replacement
+    # takes this shift and the person leaving it takes theirs. Without it the only way
+    # to trade two positions was to empty one, fill the other, then remember to come
+    # back - three steps for one decision, with a hole in the roster in between.
+    if swap and vacating is not None:
+        return _swap_positions(assignment, vacating, reason)
+
     result = EligibilityService().evaluate(
         replacement,
         assignment.role,
@@ -48,13 +73,22 @@ def override_assignment(
         assignment.schedule_run,
         start_datetime,
         end_datetime,
-        # This shift is being rewritten, so its own row must not count against the
-        # person going into it. Without this, keeping the same person and moving only
-        # the hours is refused for clashing with itself.
-        exclude_assignment=assignment,
+        # Neither the shift being rewritten nor a shift the person is leaving counts
+        # against them. Without the first, keeping the same person and moving only the
+        # hours is refused for clashing with itself.
+        exclude_assignments=[assignment, vacating],
     )
     if not result.eligible:
         raise ValidationError("Replacement is ineligible: " + "; ".join(result.reasons))
+
+    vacated_note = ""
+    if vacating is not None:
+        vacated_note = (
+            f" Moved off {vacating.shift_template.name} "
+            f"({_describe(vacating.start_datetime, vacating.end_datetime)}), now unfilled."
+        )
+        _report_vacated_slot(vacating)
+        vacating.delete()
 
     original = assignment.employee.display_name
     original_window = _describe(assignment.start_datetime, assignment.end_datetime)
@@ -72,8 +106,8 @@ def override_assignment(
         else f" Shift moved {original_window} to {new_window}."
     )
     assignment.selection_reason = (
-        f"Management override: {original} replaced by {replacement.display_name}.{moved} "
-        f"Reason: {reason.strip()}"
+        f"Management override: {original} replaced by {replacement.display_name}."
+        f"{moved}{vacated_note} Reason: {reason.strip()}"
     )
     assignment.full_clean()
     assignment.save()
@@ -81,6 +115,119 @@ def override_assignment(
         assignment.schedule_run, f"{assignment.shift_template.name} reassigned"
     )
     return assignment
+
+
+def _swap_positions(
+    first: ScheduleAssignment, second: ScheduleAssignment, reason: str
+) -> ScheduleAssignment:
+    """Exchange two people's positions on one show, each keeping the other's hours.
+
+    Both directions are checked before either is written, so a swap that is only valid
+    one way is refused outright rather than leaving the roster half-changed.
+
+    Note the row for the second position is rebuilt, so its primary key changes; hold a
+    reference by position rather than by id across a swap.
+    """
+    service = EligibilityService()
+    for moving, into in ((second.employee, first), (first.employee, second)):
+        result = service.evaluate(
+            moving,
+            into.role,
+            into.show,
+            into.shift_template,
+            into.schedule_run,
+            into.start_datetime,
+            into.end_datetime,
+            exclude_assignments=[first, second],
+        )
+        if not result.eligible:
+            raise ValidationError(
+                f"{moving.display_name} cannot take {into.shift_template.name}: "
+                + "; ".join(result.reasons)
+            )
+
+    first_person, second_person = first.employee, second.employee
+    first_slot, second_slot = first.shift_template.name, second.shift_template.name
+
+    def describe(person, came_from, went_to):
+        return (
+            f"Management swap: {person.display_name} moved from {came_from} to "
+            f"{went_to}. Reason: {reason.strip()}"
+        )
+
+    # One person per show and one person per position are both database constraints,
+    # and a straight swap breaks them halfway through: whichever row is written first
+    # duplicates the other. There is no spare value to park a row on - employee is not
+    # nullable and neither row may leave the show - so the second row is rebuilt rather
+    # than updated in place, and its Square audit entries are carried across so no
+    # record of what was already sent is lost.
+    kept = {
+        field: getattr(second, field)
+        for field in (
+            "schedule_run",
+            "show",
+            "role",
+            "assignment_type",
+            "shift_template",
+            "start_datetime",
+            "end_datetime",
+        )
+    }
+    audit_ids = list(second.square_sync_audit_logs.values_list("pk", flat=True))
+    second.delete()
+
+    first.employee = second_person
+    first.manually_overridden = True
+    first.override_reason = reason.strip()
+    first.selection_reason = describe(second_person, second_slot, first_slot)
+    _apply_hours(first)
+    first.full_clean()
+    first.save()
+
+    rebuilt = ScheduleAssignment(
+        **kept,
+        employee=first_person,
+        manually_overridden=True,
+        override_reason=reason.strip(),
+        selection_reason=describe(first_person, first_slot, second_slot),
+    )
+    _apply_hours(rebuilt)
+    rebuilt.full_clean()
+    rebuilt.save()
+    if audit_ids:
+        SquareSyncAuditLog.objects.filter(pk__in=audit_ids).update(assignment=rebuilt)
+
+    _flag_square_divergence(
+        first.schedule_run, f"{first_slot} and {second_slot} swapped"
+    )
+    return first
+
+
+def _report_vacated_slot(vacated: ScheduleAssignment) -> None:
+    """Raise the same shortage the generator would for the slot just emptied.
+
+    Moving somebody leaves their old position open. Deleting the row quietly would take
+    a staffed slot off the schedule with nothing to show a person is now missing, and
+    the run would look approvable when it is a body short.
+    """
+    from scheduling.models import WarningType
+    from scheduling.services.engine import SHORTAGE_TYPES
+
+    warning_type = SHORTAGE_TYPES.get(
+        (vacated.role.name, vacated.assignment_type),
+        WarningType.ROLE_CONFIGURATION_ERROR,
+    )
+    SchedulingWarning.objects.create(
+        schedule_run=vacated.schedule_run,
+        show=vacated.show,
+        warning_type=warning_type,
+        severity=WarningSeverity.ERROR,
+        message=(
+            f"{vacated.shift_template.name} is unfilled: "
+            f"{vacated.employee.display_name} was moved to another position on this show. "
+            "Add a person or accept the gap with a reason."
+        ),
+    )
 
 
 def _shift_window(assignment: ScheduleAssignment, start_time, end_time):

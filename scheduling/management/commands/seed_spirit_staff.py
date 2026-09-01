@@ -12,6 +12,9 @@ class StaffMember:
     roles: tuple[tuple[str, int], ...]
     spirit_only_employment: bool = False
     employment_priority: int = 0
+    # Roles this person assists in but cannot hold alone, so they are only ever
+    # rostered to on-call cover for them.
+    on_call_only_roles: tuple[str, ...] = ()
 
 
 STAFF = (
@@ -27,7 +30,14 @@ STAFF = (
     StaffMember("Svitlana", (("Bartender", 3), ("Server", 3))),
     StaffMember("Patrice", (("Bartender", 3),)),
     StaffMember("Montana", (("Bartender", 3),)),
-    StaffMember("Neil Bobbit", (("Bartender", 3),)),
+    # Neil assists behind the bar; he does not open or close it on his own. On the
+    # floor there is no such limit, so he is an ordinary server - the restriction is
+    # held per role, not per person.
+    StaffMember(
+        "Neil Bobbit",
+        (("Bartender", 3), ("Server", 3)),
+        on_call_only_roles=("Bartender",),
+    ),
     StaffMember("Brittany James", (("Bartender", 3),)),
     StaffMember("Khrystyna", (("Busser", 3),)),
     # The Server Manager runs the floor from mid-afternoon. Kept out of the ordinary
@@ -68,7 +78,11 @@ class Command(BaseCommand):
                 EmployeeRole.objects.update_or_create(
                     employee=employee,
                     role=roles[role_name],
-                    defaults={"capability_level": level, "active": True},
+                    defaults={
+                        "capability_level": level,
+                        "active": True,
+                        "on_call_only": role_name in member.on_call_only_roles,
+                    },
                 )
             EmployeeRole.objects.filter(employee=employee).exclude(
                 role__name__in=[role_name for role_name, _ in member.roles]

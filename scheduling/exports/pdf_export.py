@@ -1,4 +1,5 @@
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -7,7 +8,12 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from scheduling.exports.common import POSITION_CODES, assumptions, show_export_rows
+from scheduling.exports.common import (
+    POSITION_CODES,
+    assumptions,
+    cell_lines,
+    show_export_rows,
+)
 from scheduling.models import Employee
 from scheduling.services.metrics import metrics_for_employee
 
@@ -83,6 +89,7 @@ def schedule_pdf_bytes(schedule_run) -> bytes:
         [
             "Date / Show",
             "Guests",
+            "Server Mgr",
             "Lead",
             "Server 2",
             "Server 3",
@@ -94,23 +101,41 @@ def schedule_pdf_bytes(schedule_run) -> bytes:
             "Warnings",
         ]
     ]
+    # Paragraphs, not bare strings: a table cell holding a plain string does not wrap,
+    # which is why "Khrystyna Zavadetska" used to run across the column beside it.
+    cell_style = ParagraphStyle(
+        "GridCell", fontName="Helvetica", fontSize=6, leading=7.2, spaceAfter=0
+    )
+    hours_style = ParagraphStyle(
+        "GridHours",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#1f3864"),
+    )
     for show, assignments, warnings in show_export_rows(schedule_run):
-        people = [
-            assignments.get(code).employee.display_name if assignments.get(code) else "SHORTAGE"
-            for code in POSITION_CODES
-        ]
+        people = []
+        for code in POSITION_CODES:
+            name, hours = cell_lines(assignments.get(code))
+            text = escape(name) + (f"<br/><font size=6>{escape(hours)}</font>" if hours else "")
+            people.append(Paragraph(text, hours_style if hours else cell_style))
         schedule_data.append(
             [
-                f"{show.date:%a %b %d}\n{show.title}",
+                Paragraph(
+                    f"<b>{escape(format(show.date, '%a %b %d'))}</b><br/>{escape(show.title)}",
+                    cell_style,
+                ),
                 str(show.planning_guest_count),
                 *people,
-                "\n".join(warning.get_warning_type_display() for warning in warnings) or "None",
+                Paragraph(
+                    "<br/>".join(escape(w.get_warning_type_display()) for w in warnings) or "None",
+                    cell_style,
+                ),
             ]
         )
     story.append(
         _styled_table(
             schedule_data,
-            [1.25 * inch, 0.45 * inch, *([0.8 * inch] * 8), 1.4 * inch],
+            [1.05 * inch, 0.4 * inch, *([0.82 * inch] * 9), 1.3 * inch],
             font_size=6.5,
         )
     )

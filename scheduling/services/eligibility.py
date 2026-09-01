@@ -1,9 +1,12 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 from django.db.models import Q
+from django.utils import timezone
 
 from scheduling.models import (
+    AssignmentType,
     AvailabilityType,
     Employee,
     EmployeeTimeOff,
@@ -50,7 +53,7 @@ class EligibilityService:
         schedule_run: ScheduleRun,
         start_datetime: datetime,
         end_datetime: datetime,
-        exclude_assignment: ScheduleAssignment | None = None,
+        exclude_assignments: Sequence[ScheduleAssignment] | None = None,
     ) -> EligibilityResult:
         reasons: list[str] = []
         if not employee.active:
@@ -68,6 +71,16 @@ class EligibilityService:
         employee_role = employee.employee_roles.filter(role=role, active=True).first()
         if employee_role is None:
             reasons.append(f"Employee is not qualified for the {role.name} role.")
+        # Some people assist in a role without being able to hold it alone. Neil cannot
+        # open or close the bar on his own, so he backs up the bartender rather than
+        # being the bartender - on-call cover only, never the confirmed position.
+        elif employee_role.on_call_only and (
+            shift_template.assignment_type != AssignmentType.ON_CALL
+        ):
+            reasons.append(
+                f"{employee.display_name} covers {role.name} as on-call support only, "
+                f"and cannot hold the confirmed {shift_template.name} position."
+            )
 
         # Bussers are the under-19 role and cannot hold any alcohol-service or
         # server-facing position, even if a data-entry error ever grants them one.
@@ -86,8 +99,14 @@ class EligibilityService:
 
         # Use the actual computed shift window (anchored to this show's own
         # doors-open/wrap-up time), not the shift template's static clock time.
-        shift_start_time = start_datetime.time()
-        shift_end_time = end_datetime.time()
+        #
+        # Localised first. Callers that build a window from clock times hand over
+        # St John's-aware datetimes, but anything loaded back from the database arrives
+        # in UTC, and taking .time() off that shifted every window by the offset - a
+        # 15:00-21:00 shift was checked as 17:30-23:30 and refused for an availability
+        # gap that did not exist.
+        shift_start_time = timezone.localtime(start_datetime).time()
+        shift_end_time = timezone.localtime(end_datetime).time()
 
         availability = self.availability_provider.check(
             employee,
@@ -137,7 +156,7 @@ class EligibilityService:
         if office_conflict:
             reasons.append("Office assignment overlaps this shift.")
 
-        # The shift being edited is not a conflict with itself. Without this, moving
+        # Shifts being rewritten are not conflicts. Without this, moving
         # somebody's hours while keeping them on the shift was rejected as both an
         # overlap and a second role for the show - the assignment collided with its
         # own database row, and the one edit that needs no eligibility argument at
@@ -160,9 +179,10 @@ class EligibilityService:
             show=show,
             employee=employee,
         )
-        if exclude_assignment is not None and exclude_assignment.pk:
-            overlapping_assignments = overlapping_assignments.exclude(pk=exclude_assignment.pk)
-            same_show_assignments = same_show_assignments.exclude(pk=exclude_assignment.pk)
+        excluded_pks = [a.pk for a in (exclude_assignments or []) if a is not None and a.pk]
+        if excluded_pks:
+            overlapping_assignments = overlapping_assignments.exclude(pk__in=excluded_pks)
+            same_show_assignments = same_show_assignments.exclude(pk__in=excluded_pks)
 
         if overlapping_assignments.exists():
             reasons.append("An existing schedule assignment overlaps this shift.")

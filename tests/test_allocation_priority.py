@@ -111,10 +111,12 @@ def test_nobody_works_two_positions_at_one_show(configured_staff):
 
 
 def test_the_raffle_window_follows_the_show_it_belongs_to(configured_staff):
-    """50/50 sells from doors, so its call time is a property of the show type.
+    """The 50/50 call time is a property of the show type, not one fixed hour.
 
-    It was a single hardcoded 18:00 for every show, which is half an hour early for an
-    ordinary evening whose doors open at 6:30.
+    It was a single hardcoded 18:00 for every show. The windows below are the ones
+    management gave for the seat directly - 17:45-20:30 on an ordinary evening and
+    17:30-20:30 on Dwight's - which supersede the earlier reading of them as derived
+    from doors; the seller is in before the room opens, not as it opens.
     """
     from scheduling.models import ShiftTemplate
 
@@ -126,10 +128,10 @@ def test_the_raffle_window_follows_the_show_it_belongs_to(configured_staff):
     )
 
     start, end = shift_window_for(ordinary, template)
-    assert (start.time(), end.time()) == (time(18, 30), time(21, 30))
+    assert (start.time(), end.time()) == (time(17, 45), time(20, 30))
 
     start, end = shift_window_for(dwights, template)
-    assert (start.time(), end.time()) == (time(18, 0), time(21, 30))
+    assert (start.time(), end.time()) == (time(17, 30), time(20, 30))
 
 
 @pytest.mark.parametrize(

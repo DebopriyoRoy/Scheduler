@@ -27,8 +27,16 @@ from scheduling.models import (
     WarningSeverity,
     WarningType,
 )
+from scheduling.services.allocator import (
+    MONTHLY_CONFIRMED_SHIFT_TARGET as MONTHLY_TARGET,
+)
 from scheduling.services.allocator import GlobalAllocator, Slot, slot_priority
-from scheduling.services.availability import AvailabilityProvider, LocalAvailabilityProvider
+from scheduling.services.availability import (
+    ABSOLUTE_MIN_SHIFT_HOURS,
+    MIN_FITTED_SHIFT_HOURS,
+    AvailabilityProvider,
+    LocalAvailabilityProvider,
+)
 from scheduling.services.eligibility import EXCLUDED_MANAGER_NAMES, EligibilityService
 from scheduling.services.fairness import FairnessService
 from scheduling.services.metrics import EmployeeMetrics, metrics_for_employee
@@ -119,25 +127,25 @@ class Candidate:
 # some Dwight's dates against the curtain (18:30) and some against the doors (18:00);
 # the title is the thing that reliably says which timetable applies.
 STANDARD_EVENING_WINDOWS = {
-    "fifty-fifty": (time(18, 30), time(21, 30)),
     "server-manager": (time(14, 0), time(21, 0)),
     "lead-server": (time(15, 0), time(21, 0)),
     "server-2": (time(16, 0), time(21, 30)),
     "server-3": (time(17, 30), time(23, 0)),
     "on-call-server": (time(18, 15), time(23, 0)),
     "busser": (time(18, 45), time(23, 0)),
+    "fifty-fifty": (time(17, 45), time(20, 30)),
     "bartender": (time(16, 0), time(23, 0)),
     "on-call-bartender": (time(17, 30), time(22, 30)),
 }
 
 DWIGHTS_WEDDING_WINDOWS = {
-    "fifty-fifty": (time(18, 0), time(21, 30)),
     "server-manager": (time(14, 0), time(21, 0)),
     "lead-server": (time(15, 0), time(21, 0)),
     "server-2": (time(15, 30), time(21, 30)),
     "server-3": (time(17, 0), time(22, 30)),
     "on-call-server": (time(19, 0), time(22, 30)),
     "busser": (time(19, 15), time(23, 0)),
+    "fifty-fifty": (time(17, 30), time(20, 30)),
     "bartender": (time(16, 0), time(22, 30)),
     "on-call-bartender": (time(17, 0), time(22, 30)),
 }
@@ -156,6 +164,11 @@ WINDOW_ALIASES = {
     "bartender-3": "bartender",
     "on-call-bartender-2": "on-call-bartender",
 }
+
+# How far back the allocator looks when working out who has already had hours.
+# Four weeks: long enough to even out a month's roster, short enough that someone
+# who was away in the spring is not still owed shifts in the autumn.
+RECENT_HOURS_WINDOW_DAYS = 28
 
 # The evening timetable applies to a show that opens at half six.
 STANDARD_EVENING_START = time(18, 30)
@@ -208,12 +221,11 @@ def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, dat
     """
     called = call_times_for(show, template.code)
     if called is None and template.code == "fifty-fifty":
-        # A show on neither timetable: keep the long-standing default rather than
-        # deriving a raffle window from a curtain time that may be a private booking.
-        start = datetime.combine(show.date, FIFTY_FIFTY_START_TIME, tzinfo=LOCAL_TIMEZONE)
-        end = datetime.combine(show.date, FIFTY_FIFTY_END_TIME, tzinfo=LOCAL_TIMEZONE)
-        return start, end
-
+        # A show on neither timetable - a matinee or a private booking - keeps the
+        # long-standing default rather than deriving a raffle window from a curtain
+        # time. Set here rather than returned early so it goes through the same window
+        # construction as every other position.
+        called = (FIFTY_FIFTY_START_TIME, FIFTY_FIFTY_END_TIME)
     if called is not None:
         start_time, end_time = called
         start = datetime.combine(show.date, start_time, tzinfo=LOCAL_TIMEZONE)
@@ -226,6 +238,23 @@ def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, dat
     start_offset = ROLE_START_OFFSET_MINUTES.get(template.code, DEFAULT_START_OFFSET_MINUTES)
     end_offset = ROLE_END_OFFSET_MINUTES.get(template.code, DEFAULT_END_OFFSET_MINUTES)
     return doors - timedelta(minutes=start_offset), wrap + timedelta(minutes=end_offset)
+
+
+def coverage_tier(slot, employee) -> int:
+    """How well this person covers the published call window: lower is better.
+
+    0 - the whole shift, which is what the timetable asks for and what is used
+        whenever anyone at all can manage it.
+    1 - a proper part-shift, three hours or more.
+    2 - a short stretch, taken only to keep a position staffed rather than empty.
+
+    Tiering rather than weighting matters: as a scoring term, a fully available person
+    could be outbid by someone short on hours, and the published call times quietly
+    shrank to whatever that person could do.
+    """
+    if slot.window_for(employee.id) == (slot.start, slot.end):
+        return 0
+    return 1 if float(slot.hours_for(employee.id)) >= MIN_FITTED_SHIFT_HOURS else 2
 
 
 SHORTAGE_TYPES = {
@@ -562,6 +591,8 @@ class SchedulingEngine:
         """
         targets: dict[int, Decimal] = {}
         carry_in_hours: dict[int, Decimal] = {}
+        recent = self._recent_paid_hours(schedule_run)
+        recent_positions, recent_shifts = self._recent_position_history(schedule_run)
         preferred_role_ids: dict[int, int] = {}
         for employee in Employee.objects.filter(active=True).select_related(
             "scheduling_preference"
@@ -569,7 +600,9 @@ class SchedulingEngine:
             pref = getattr(employee, "scheduling_preference", None)
             if pref and pref.target_hours and pref.priority_enabled:
                 targets[employee.id] = pref.target_hours
-            carry_in_hours[employee.id] = employee.opening_recent_hours
+            carry_in_hours[employee.id] = employee.opening_recent_hours + recent.get(
+                employee.id, Decimal("0.00")
+            )
             if pref and pref.preferred_role_id:
                 preferred_role_ids[employee.id] = pref.preferred_role_id
 
@@ -577,6 +610,8 @@ class SchedulingEngine:
             targets,
             carry_in_hours=carry_in_hours,
             preferred_role_ids=preferred_role_ids,
+            recent_position_counts=recent_positions,
+            recent_shift_counts=recent_shifts,
         )
 
         # Stage A: build the full eligibility graph before committing anything.
@@ -584,7 +619,9 @@ class SchedulingEngine:
         excluded_by_slot: dict[tuple[int, int], dict[str, tuple[str, ...]]] = {}
         for show, template, _role_name in planned_slots:
             start, end = self._datetimes(show, template)
-            candidates, excluded = self._eligible_candidates(schedule_run, show, template)
+            candidates, excluded, fitted = self._eligible_candidates(
+                schedule_run, show, template
+            )
             slot = Slot(
                 show=show,
                 template=template,
@@ -593,6 +630,7 @@ class SchedulingEngine:
                 hours=Decimal(str(round((end - start).total_seconds() / 3600, 2))),
                 is_on_call=template.assignment_type == AssignmentType.ON_CALL,
                 candidates=[c.employee for c in candidates],
+                fitted=fitted,
             )
             slots.append(slot)
             excluded_by_slot[slot.key] = excluded
@@ -606,14 +644,15 @@ class SchedulingEngine:
 
             live_candidates = []
             for employee in slot.candidates:
+                emp_start, emp_end = slot.window_for(employee.id)
                 result = self.eligibility.evaluate(
                     employee,
                     slot.template.role,
                     slot.show,
                     slot.template,
                     schedule_run,
-                    slot.start,
-                    slot.end,
+                    emp_start,
+                    emp_end,
                 )
                 if result.eligible:
                     live_candidates.append(employee)
@@ -640,6 +679,35 @@ class SchedulingEngine:
                         schedule_run, slot.show, slot.template, excluded_by_slot[slot.key]
                     )
                     continue
+
+            # Management's call times are the rule, not a suggestion. Anyone who can
+            # work the whole window is preferred outright over anyone who can only work
+            # part of it - a partial shift is what you fall back on when the slot would
+            # otherwise go to nobody, not something to hand out while a fully available
+            # person is standing there. Weighting this instead of gating it let a
+            # starved candidate with narrow hours outbid full cover and quietly shrink
+            # the published call times, which is exactly what must not happen.
+            tiers = {e.id: coverage_tier(slot, e) for e in live_candidates}
+            best_tier = min(tiers.values())
+            pool = [e for e in live_candidates if tiers[e.id] == best_tier]
+
+            # Everyone available is owed real shifts, not only the few whose hours
+            # happen to fit the widest windows. When every full-cover candidate has
+            # already had a fair month and somebody who can work most of the shift has
+            # not, let them into the running. It is self-limiting: early in a month the
+            # full-cover people are short too, so they win and the call times stand.
+            if best_tier == 0 and not slot.is_on_call:
+                fewest_full_cover = min(
+                    allocator.confirmed_shifts_so_far(e.id) for e in pool
+                )
+                pool += [
+                    e
+                    for e in live_candidates
+                    if tiers[e.id] == 1
+                    and allocator.confirmed_shifts_so_far(e.id) < MONTHLY_TARGET
+                    and allocator.confirmed_shifts_so_far(e.id) < fewest_full_cover
+                ]
+            live_candidates = pool
 
             remaining = {
                 employee.id: sum(1 for other in unfilled if employee in other.candidates)
@@ -674,7 +742,20 @@ class SchedulingEngine:
                     selected.first_name, both_eligible=len(live_candidates) == 2
                 )
 
-            self._save_assignment(schedule_run, slot.show, slot.template, selected, reason)
+            chosen_start, chosen_end = slot.window_for(selected.id)
+            self._save_assignment(
+                schedule_run,
+                slot.show,
+                slot.template,
+                selected,
+                reason,
+                start=chosen_start,
+                end=chosen_end,
+            )
+            if (chosen_start, chosen_end) != (slot.start, slot.end):
+                self._partial_coverage_warning(
+                    schedule_run, slot, selected, chosen_start, chosen_end
+                )
             allocator.commit(selected, slot)
             self._snapshot_candidates(
                 schedule_run, slot, live_candidates, selected, reason, allocator
@@ -823,25 +904,123 @@ class SchedulingEngine:
         ]
         return "; ".join(parts) + "."
 
+    def _recent_paid_hours(self, schedule_run: ScheduleRun) -> dict[int, Decimal]:
+        """Confirmed hours each employee already has in the weeks before this run.
+
+        Without this the allocator had no memory: carry-in came from
+        Employee.opening_recent_hours, a field nothing ever writes, so every run started
+        the whole roster at zero and the same tie-break order won every time. That is
+        why a fresh single-date run kept producing the same names in the same slots.
+        Superseded runs are left out - they were replaced, so the hours never existed -
+        as is the run being built, whose own hours the allocator tracks live.
+        """
+        window_start = schedule_run.start_date - timedelta(days=RECENT_HOURS_WINDOW_DAYS)
+        rows = (
+            ScheduleAssignment.objects.filter(
+                show__date__gte=window_start,
+                show__date__lt=schedule_run.start_date,
+                assignment_type=AssignmentType.CONFIRMED,
+                employee__isnull=False,
+            )
+            .exclude(schedule_run=schedule_run)
+            .exclude(schedule_run__status=ScheduleRunStatus.SUPERSEDED_SOURCE_DATA)
+            .values_list("employee_id", "scheduled_paid_hours")
+        )
+        totals: dict[int, Decimal] = {}
+        for employee_id, hours in rows:
+            totals[employee_id] = totals.get(employee_id, Decimal("0.00")) + hours
+        return totals
+
+    def _recent_position_history(
+        self, schedule_run: ScheduleRun
+    ) -> tuple[dict[tuple[int, int], int], dict[int, int]]:
+        """Who has held which position lately, and how many shifts they have had.
+
+        The first drives position rotation - so the person who starts at three is not
+        the same person every night - and the second drives the monthly floor, so
+        everyone who is available gets real shifts rather than only the few whose
+        availability happens to cover the widest windows.
+        """
+        window_start = schedule_run.start_date - timedelta(days=RECENT_HOURS_WINDOW_DAYS)
+        rows = (
+            ScheduleAssignment.objects.filter(
+                show__date__gte=window_start,
+                show__date__lt=schedule_run.start_date,
+                employee__isnull=False,
+            )
+            .exclude(schedule_run=schedule_run)
+            .exclude(schedule_run__status=ScheduleRunStatus.SUPERSEDED_SOURCE_DATA)
+            .values_list("employee_id", "shift_template_id", "assignment_type")
+        )
+        positions: dict[tuple[int, int], int] = {}
+        shifts: dict[int, int] = {}
+        for employee_id, template_id, assignment_type in rows:
+            key = (employee_id, template_id)
+            positions[key] = positions.get(key, 0) + 1
+            # The 50/50 is a real night's work, not standby, so it counts towards a
+            # fair month. Counting only CONFIRMED made whoever works the 50/50 look
+            # starved and pushed them up the order for floor shifts they did not need.
+            if assignment_type != AssignmentType.ON_CALL:
+                shifts[employee_id] = shifts.get(employee_id, 0) + 1
+        return positions, shifts
+
+    def _fit_to_availability(
+        self,
+        employee: Employee,
+        show: Show,
+        template: ShiftTemplate,
+        start: datetime,
+        end: datetime,
+    ) -> tuple[datetime, datetime]:
+        """Trim a call window to the part this employee is free for.
+
+        Returns the window unchanged when there is nothing to trim to - no availability
+        on file, or a provider that cannot fit - so the ordinary eligibility checks give
+        their usual verdict and an unknown stays a hard no.
+        """
+        fit = getattr(self.availability_provider, "fit", None)
+        if fit is None:
+            return start, end
+        window = fit(
+            employee,
+            show.date,
+            start.time(),
+            end.time(),
+            minimum_hours=ABSOLUTE_MIN_SHIFT_HOURS,
+        )
+        if window is None or window.covers_full_shift:
+            return start, end
+        fitted_start = datetime.combine(show.date, window.start_time, tzinfo=LOCAL_TIMEZONE)
+        wraps = window.end_time <= window.start_time
+        end_date = show.date + timedelta(days=1) if wraps else show.date
+        return fitted_start, datetime.combine(end_date, window.end_time, tzinfo=LOCAL_TIMEZONE)
+
     def _eligible_candidates(
         self,
         schedule_run: ScheduleRun,
         show: Show,
         template: ShiftTemplate,
-    ) -> tuple[list[Candidate], dict[str, tuple[str, ...]]]:
+    ) -> tuple[list[Candidate], dict[str, tuple[str, ...]], dict[int, tuple[datetime, datetime]]]:
         start, end = self._datetimes(show, template)
         candidates: list[Candidate] = []
         excluded: dict[str, tuple[str, ...]] = {}
+        fitted: dict[int, tuple[datetime, datetime]] = {}
         employees = Employee.objects.filter(active=True).prefetch_related("employee_roles__role")
         for employee in employees:
+            # Judge each person against the part of the shift they can actually work,
+            # not the whole call window. Someone free 16:00-20:30 is not unavailable for
+            # a shift ending at 23:00; they are available for the first three hours.
+            emp_start, emp_end = self._fit_to_availability(employee, show, template, start, end)
+            if (emp_start, emp_end) != (start, end):
+                fitted[employee.id] = (emp_start, emp_end)
             result = self.eligibility.evaluate(
                 employee,
                 template.role,
                 show,
                 template,
                 schedule_run,
-                start,
-                end,
+                emp_start,
+                emp_end,
             )
             if not result.eligible:
                 excluded[employee.display_name] = result.reasons
@@ -858,7 +1037,7 @@ class SchedulingEngine:
                     capability_level=employee_role.capability_level,
                 )
             )
-        return candidates, excluded
+        return candidates, excluded, fitted
 
     def _save_assignment(
         self,
@@ -867,8 +1046,11 @@ class SchedulingEngine:
         template: ShiftTemplate,
         employee: Employee,
         reason: str,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> ScheduleAssignment:
-        start, end = self._datetimes(show, template)
+        if start is None or end is None:
+            start, end = self._datetimes(show, template)
         duration_hours = Decimal(str(round((end - start).total_seconds() / 3600, 2)))
         is_on_call = template.assignment_type == AssignmentType.ON_CALL
         assignment = ScheduleAssignment(
@@ -887,6 +1069,37 @@ class SchedulingEngine:
         assignment.full_clean()
         assignment.save()
         return assignment
+
+    def _partial_coverage_warning(
+        self,
+        schedule_run: ScheduleRun,
+        slot,
+        employee: Employee,
+        start: datetime,
+        end: datetime,
+    ) -> None:
+        """Say plainly which hours of the shift nobody is on.
+
+        Filling a slot with somebody who can work part of it is better than leaving it
+        empty, but it is not the same as covering it. Without this the tail of the
+        evening would quietly go unstaffed with nothing on the schedule to show for it.
+        """
+        gaps = []
+        if start > slot.start:
+            gaps.append(f"{slot.start:%H:%M}-{start:%H:%M}")
+        if end < slot.end:
+            gaps.append(f"{end:%H:%M}-{slot.end:%H:%M}")
+        self._warning(
+            schedule_run,
+            slot.show,
+            WarningType.PARTIAL_SHIFT_COVERAGE,
+            WarningSeverity.WARNING,
+            f"{employee.display_name} covers {start:%H:%M}-"
+            f"{end:%H:%M} of {slot.template.name} "
+            f"({slot.start:%H:%M}-{slot.end:%H:%M}); "
+            f"nobody is on for {' and '.join(gaps)}. Their availability does not reach "
+            f"further - add a second person for the rest if the floor needs it.",
+        )
 
     def _shortage(
         self,
@@ -964,8 +1177,12 @@ class SchedulingEngine:
                 f"{DEFAULT_EXPECTED_GUESTS} guests or are cancelled). Enter the real "
                 "guest count to move this show up the staffing ladder.",
             )
+        # Only people the engine could actually roster. Kitchen, office and cleaning
+        # staff hold no scheduled role, so naming them as "availability unknown" was
+        # noise about staff this application never schedules in the first place.
         unknown_names = list(
-            Employee.objects.filter(active=True)
+            Employee.objects.filter(active=True, employee_roles__active=True)
+            .distinct()
             .exclude(
                 availability_entries__date=show.date,
                 availability_entries__availability_type__in=[
