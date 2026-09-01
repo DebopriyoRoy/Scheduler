@@ -86,16 +86,33 @@ def bundle_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def free_port(preferred: int = 8765) -> int:
-    """Prefer a stable port so bookmarks keep working; fall back if it is taken."""
-    for candidate in (preferred, 0):
+def free_port(preferred: int = 8765, wait_seconds: float = 12.0) -> int:
+    """Prefer a stable port so bookmarks keep working; fall back if it is taken.
+
+    Waits a little for the preferred port rather than giving up on the first refusal.
+    A restart is the common case, and a just-closed listener leaves the port in
+    TIME_WAIT for a minute or so - long enough that an immediate relaunch skipped
+    8765 and came up on a random high port instead, quietly breaking the bookmark the
+    stable port exists to protect. SO_REUSEADDR clears the TIME_WAIT case itself; the
+    wait covers a previous copy that is still shutting down.
+    """
+    deadline = time.monotonic() + wait_seconds
+    while True:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                probe.bind(("127.0.0.1", candidate))
+                probe.bind(("127.0.0.1", preferred))
                 return probe.getsockname()[1]
             except OSError:
-                continue
-    return 0
+                pass
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
+
+    # Genuinely occupied - another copy is serving, or something else holds it.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 def already_running(port: int) -> bool:

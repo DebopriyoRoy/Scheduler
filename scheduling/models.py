@@ -141,6 +141,10 @@ class WarningType(models.TextChoices):
         "SQUARE_OUT_OF_DATE",
         "Square no longer matches this schedule",
     )
+    OVERLAPPING_ROSTER = (
+        "OVERLAPPING_ROSTER",
+        "These dates are already rostered by another schedule",
+    )
     EVENT_STAFFING_REVIEW_REQUIRED = (
         "EVENT_STAFFING_REVIEW_REQUIRED",
         "Event staffing review required",

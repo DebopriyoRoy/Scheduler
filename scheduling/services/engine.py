@@ -173,9 +173,29 @@ RECENT_HOURS_WINDOW_DAYS = 28
 # The evening timetable applies to a show that opens at half six.
 STANDARD_EVENING_START = time(18, 30)
 
+# The shows that run the house's regular timing - doors 6:30, dinner 7, curtain 8 -
+# named so they are recognised however the calendar happens to record the clock.
+# Matching on start time alone is fragile: Dwight's is proof that the same production
+# gets entered against the doors on some dates and the curtain on others, and a show
+# that drifts off 18:30 silently falls back to offsets derived from whatever times it
+# does carry. Naming them means a typo in the calendar cannot quietly re-time a crew.
+STANDARD_EVENING_TITLE_KEYWORDS = (
+    "home-i-cide",
+    "forever country",
+    "shift happens",
+)
+
 
 def is_dwights_wedding(show: Show) -> bool:
     return "dwight" in (show.title or "").casefold()
+
+
+def is_standard_evening_show(show: Show) -> bool:
+    """A show on the house's regular doors-6:30 timetable."""
+    title = (show.title or "").casefold()
+    if any(keyword in title for keyword in STANDARD_EVENING_TITLE_KEYWORDS):
+        return True
+    return show.start_time == STANDARD_EVENING_START
 
 
 def call_times_for(show: Show, template_code: str) -> tuple[time, time] | None:
@@ -183,7 +203,7 @@ def call_times_for(show: Show, template_code: str) -> tuple[time, time] | None:
     code = WINDOW_ALIASES.get(template_code, template_code)
     if is_dwights_wedding(show):
         return DWIGHTS_WEDDING_WINDOWS.get(code)
-    if show.start_time == STANDARD_EVENING_START:
+    if is_standard_evening_show(show):
         return STANDARD_EVENING_WINDOWS.get(code)
     return None
 
@@ -201,8 +221,10 @@ def shift_window_for(show: Show, template: ShiftTemplate) -> tuple[datetime, dat
     """
     called = call_times_for(show, template.code)
     if called is None and template.code == "fifty-fifty":
-        # A matinee or private booking has no 50/50 call time of its own; fall back to
-        # the old fixed pair rather than deriving one from doors, which never fitted.
+        # A show on neither timetable - a matinee or a private booking - keeps the
+        # long-standing default rather than deriving a raffle window from a curtain
+        # time. Set here rather than returned early so it goes through the same window
+        # construction as every other position.
         called = (FIFTY_FIFTY_START_TIME, FIFTY_FIFTY_END_TIME)
     if called is not None:
         start_time, end_time = called
@@ -330,6 +352,8 @@ class SchedulingEngine:
         schedule_run.algorithm_version = self.algorithm_version
         schedule_run.full_clean()
         schedule_run.save()
+
+        self._warn_about_overlapping_rosters(schedule_run)
 
         generate_office_assignments(start_date, end_date)
         rotation = FiftyFiftyRotation()
@@ -641,6 +665,21 @@ class SchedulingEngine:
                 )
                 continue
 
+            if slot.template.role.name == "50/50":
+                live_candidates, spared = self._reserve_for_the_floor(
+                    slot, unfilled, live_candidates
+                )
+                for employee in spared:
+                    excluded_by_slot[slot.key][employee.display_name] = (
+                        "Needed on the floor or the bar for this show; the 50/50 seat "
+                        "cannot take the last person a required position has.",
+                    )
+                if not live_candidates:
+                    self._shortage(
+                        schedule_run, slot.show, slot.template, excluded_by_slot[slot.key]
+                    )
+                    continue
+
             # Management's call times are the rule, not a suggestion. Anyone who can
             # work the whole window is preferred outright over anyone who can only work
             # part of it - a partial shift is what you fall back on when the slot would
@@ -725,6 +764,53 @@ class SchedulingEngine:
             for other in unfilled:
                 if other.show.id == slot.show.id and selected in other.candidates:
                     other.candidates.remove(selected)
+
+    def _reserve_for_the_floor(
+        self,
+        slot,
+        unfilled: list,
+        live_candidates: list[Employee],
+    ) -> tuple[list[Employee], list[Employee]]:
+        """Keep the raffle from taking someone a required position cannot spare.
+
+        Both 50/50 sellers also serve, and 50/50 is settled first because it is the
+        most constrained slot on the board - only two people hold the role. That
+        combination emptied the floor: across one fortnight Yana took five 50/50 seats
+        and served on none, while three server and five on-call server positions went
+        unfilled, because the raffle had already booked her by the time they were
+        settled.
+
+        The rule management actually work to is that the floor and the bar come first
+        and the raffle takes whoever is genuinely spare. So a candidate is withheld
+        when losing them would leave this show's required positions with fewer people
+        than seats - Hall's condition, counted across the pool the remaining essential
+        slots share rather than slot by slot, because those slots draw on the same
+        people.
+
+        Ordering alone cannot express this. Settling 50/50 last would starve the
+        rotation instead: both sellers would be taken as servers on every show that
+        had a seat free, and nobody would sell tickets.
+        """
+        from scheduling.services.allocator import role_tier
+
+        essential = [
+            other
+            for other in unfilled
+            if other.show.id == slot.show.id
+            and role_tier(other.template.role.name) == 0
+            and not other.is_on_call
+        ]
+        if not essential:
+            return live_candidates, []
+
+        pool = {employee.id for other in essential for employee in other.candidates}
+        kept, spared = [], []
+        for employee in live_candidates:
+            if employee.id in pool and len(pool - {employee.id}) < len(essential):
+                spared.append(employee)
+            else:
+                kept.append(employee)
+        return kept, spared
 
     def _snapshot_candidates(
         self,
@@ -1037,6 +1123,47 @@ class SchedulingEngine:
             f"No eligible employee for {template.name}."
             + (f" Examples: {sample}" if sample else ""),
         )
+
+    def _warn_about_overlapping_rosters(self, schedule_run: ScheduleRun) -> None:
+        """Say plainly when these dates are already staffed by a live roster.
+
+        Nobody can work two shifts at once, so anyone already rostered on an approved
+        or synced run is refused here - correctly. But that refusal only ever appeared
+        as one line inside each unfilled position, behind a "Why?" link, so a run
+        generated over dates Square already holds looked like a broken engine: forty-six
+        shortages, every server empty, and no explanation on the page.
+
+        The overlap is a property of the whole run, so it is reported once, at the top,
+        naming the run responsible and what to do about it.
+        """
+        live = (
+            ScheduleRun.objects.filter(
+                status__in=[ScheduleRunStatus.APPROVED, ScheduleRunStatus.SYNCED_TO_SQUARE],
+                start_date__lte=schedule_run.end_date,
+                end_date__gte=schedule_run.start_date,
+            )
+            .exclude(pk=schedule_run.pk)
+            .order_by("start_date", "pk")
+        )
+        for other in live:
+            staff = (
+                ScheduleAssignment.objects.filter(schedule_run=other)
+                .values("employee")
+                .distinct()
+                .count()
+            )
+            self._warning(
+                schedule_run,
+                None,
+                WarningType.OVERLAPPING_ROSTER,
+                WarningSeverity.WARNING,
+                f"Schedule #{other.pk} ({other.get_status_display()}) already rosters "
+                f"{other.start_date:%d %b} to {other.end_date:%d %b %Y}, which overlaps "
+                f"these dates, and has {staff} member(s) of staff on it. Nobody can work "
+                f"two shifts at once, so anyone already booked there cannot be placed "
+                f"here and those positions will show as shortages. To re-plan these "
+                f"dates, edit schedule #{other.pk} instead, or supersede it first.",
+            )
 
     def _create_input_warnings(self, schedule_run: ScheduleRun, show: Show) -> None:
         if show.uses_default_guest_count:
