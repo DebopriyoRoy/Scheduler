@@ -814,6 +814,15 @@ class SquareSyncAuditAction(models.TextChoices):
         "PRODUCTION_DRAFT_DELETE_FAILED",
         "Production draft delete failed",
     )
+    PRODUCTION_DRAFT_UPDATED = "PRODUCTION_DRAFT_UPDATED", "Production draft updated"
+    PRODUCTION_DRAFT_UPDATE_FAILED = (
+        "PRODUCTION_DRAFT_UPDATE_FAILED",
+        "Production draft update failed",
+    )
+    PRODUCTION_PUBLISHED_UNCHANGED = (
+        "PRODUCTION_PUBLISHED_UNCHANGED",
+        "Published shift left unchanged",
+    )
     PRODUCTION_REMOVED_FROM_SQUARE = (
         "PRODUCTION_REMOVED_FROM_SQUARE",
         "Production roster removed from Square",

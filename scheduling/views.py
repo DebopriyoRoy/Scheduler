@@ -87,6 +87,7 @@ from scheduling.services.square_production_sync import (
     sync_full_production_schedule,
     sync_production_jobs,
     sync_production_team_members,
+    update_run_in_square,
 )
 from scheduling.services.square_reconcile import (
     SquareReadError,
@@ -1420,6 +1421,27 @@ def square_production_sync_hub(request, run_id):
         schedule_run=schedule_run
     ).order_by("-created_at")[:20]
 
+    # Whether anything from this run is already sitting in Square. If it is, the page
+    # offers to reconcile rather than only to create, which is what a second visit is
+    # almost always for.
+    # Assignments that have a shift in Square, not every shift id ever written: a run
+    # re-synced a few times accumulates historical ids, and counting those said "111
+    # shifts" for a schedule of 49.
+    square_shift_count = (
+        SquareSyncAuditLog.objects.filter(
+            schedule_run=schedule_run,
+            assignment__isnull=False,
+            action_type__in=(
+                SquareSyncAuditAction.PRODUCTION_DRAFT_CREATED,
+                SquareSyncAuditAction.PRODUCTION_PILOT_CREATED,
+            ),
+        )
+        .exclude(square_scheduled_shift_id="")
+        .values("assignment_id")
+        .distinct()
+        .count()
+    )
+
     return render(
         request,
         "scheduling/square_production_sync.html",
@@ -1430,6 +1452,8 @@ def square_production_sync_hub(request, run_id):
             "pilot_audit": pilot_audit,
             "verified_audit": verified_audit,
             "audit_logs": audit_logs,
+            "already_in_square": square_shift_count > 0,
+            "square_shift_count": square_shift_count,
         },
     )
 
@@ -1487,6 +1511,64 @@ def square_production_full_sync(request, run_id):
 
         except SquareProductionSyncError as exc:
             messages.error(request, str(exc))
+    return redirect("square_production_sync_hub", run_id=run_id)
+
+
+@login_required
+def square_production_update(request, run_id):
+    """Push changes made after the first sync into Square.
+
+    Separate from the first bulk create, which stays behind its typed confirmation:
+    that one puts a whole roster into a live account for the first time, this one
+    reconciles a roster already there with the corrections made since.
+    """
+    schedule_run = get_object_or_404(ScheduleRun, pk=run_id)
+    if request.method == "POST":
+        try:
+            result = update_run_in_square(schedule_run, user=request.user)
+        except SquareProductionWritesDisabledError:
+            messages.error(
+                request,
+                "Updating Square needs SQUARE_PRODUCTION_WRITES_ENABLED=true in the "
+                "settings file. It is off, so nothing was touched.",
+            )
+            return redirect("square_production_sync_hub", run_id=run_id)
+        except (SquareProductionSyncError, SquareIntegrationError) as exc:
+            messages.error(request, f"Square refused the update: {exc}")
+            return redirect("square_production_sync_hub", run_id=run_id)
+
+        if result.changed_anything:
+            parts = []
+            if result.updated:
+                parts.append(f"{result.updated} shift{pluralize(result.updated)} updated")
+            if result.created:
+                parts.append(f"{result.created} added")
+            if result.deleted:
+                parts.append(f"{result.deleted} removed")
+            messages.success(
+                request,
+                "Square now matches this schedule: "
+                + ", ".join(parts)
+                + f". {result.unchanged} were already correct.",
+            )
+        else:
+            messages.info(
+                request,
+                f"Square already matches this schedule; nothing needed changing "
+                f"({result.unchanged} shift{pluralize(result.unchanged)} checked).",
+            )
+
+        # Published shifts are the one thing this cannot rewrite: staff have already
+        # been told those hours, so they are named rather than silently skipped.
+        if result.published_blocked:
+            messages.warning(
+                request,
+                "Left unchanged because they are already published to staff in Square: "
+                + "; ".join(result.published_blocked)
+                + ". Change these in the Square dashboard, or unpublish them there first.",
+            )
+        if result.failed:
+            messages.error(request, "Square rejected: " + "; ".join(result.failed))
     return redirect("square_production_sync_hub", run_id=run_id)
 
 
