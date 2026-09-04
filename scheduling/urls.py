@@ -109,6 +109,11 @@ urlpatterns = [
         name="square_production_sync_hub",
     ),
     path(
+        "schedules/<int:run_id>/square-update/",
+        views.square_production_update,
+        name="square_production_update",
+    ),
+    path(
         "schedules/<int:run_id>/pilot-confirm/",
         views.square_production_pilot_confirm,
         name="square_production_pilot_confirm",

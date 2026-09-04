@@ -418,3 +418,229 @@ def test_export_production_sync_csv_view(client, monkeypatch, settings):
     assert b"Date,Show,Employee,Role" in response.content
 
 
+
+
+def _mapped_run(monkeypatch, settings):
+    """An approved run whose staff and roles are all mapped to Square."""
+    settings.DEBUG = True
+    monkeypatch.setenv("SQUARE_ENVIRONMENT", "production")
+    monkeypatch.setenv("SQUARE_PRODUCTION_ACCESS_TOKEN", "prod-token")
+    monkeypatch.setenv("SQUARE_PRODUCTION_WRITES_ENABLED", "true")
+    call_command("seed_spirit_staff")
+    call_command("seed_scheduling_config")
+    call_command("seed_schedule_demo")
+
+    user = User.objects.create_user(username="sync_test")
+    run = SchedulingEngine().generate(date(2026, 9, 12), date(2026, 9, 12), allow_shortages=True)
+    approve_schedule(run, user)
+
+    for employee in Employee.objects.filter(active=True):
+        SquareEmployeeMapping.objects.get_or_create(
+            employee=employee,
+            environment="production",
+            defaults={
+                "square_team_member_id": f"TM_{employee.pk}",
+                "status": MappingStatus.MAPPED_EXACT,
+            },
+        )
+    for role in Role.objects.all():
+        SquareRoleMapping.objects.get_or_create(
+            role=role,
+            environment="production",
+            defaults={
+                "square_job_id": f"JOB_{role.pk}",
+                "status": MappingStatus.MAPPED_EXACT,
+            },
+        )
+    SquareLocationMapping.objects.get_or_create(
+        environment="production", defaults={"square_location_id": "LR73BX986ZKYD"}
+    )
+    return run, user
+
+
+def _record_sent(run, assignment, shift_id):
+    """Pretend this assignment was sent to Square as that shift."""
+    SquareSyncAuditLog.objects.create(
+        action_type=SquareSyncAuditAction.PRODUCTION_DRAFT_CREATED,
+        environment="production",
+        schedule_run=run,
+        assignment=assignment,
+        square_scheduled_shift_id=shift_id,
+    )
+
+
+@pytest.mark.django_db
+def test_a_changed_shift_is_updated_in_square_not_skipped(monkeypatch, settings):
+    """The whole point: corrections made after the first sync must reach Square.
+
+    The first sync only created, and treated anything already in Square as
+    ALREADY_EXISTS. A shift whose person or hours changed here therefore matched on
+    date, was skipped, and Square kept showing the old roster indefinitely.
+    """
+    from scheduling.services.square_production_sync import update_run_in_square
+
+    run, user = _mapped_run(monkeypatch, settings)
+    assignment = run.assignments.select_related("employee").first()
+    _record_sent(run, assignment, "SHIFT_1")
+
+    client = MagicMock(spec=SquareClient)
+    client.create_draft_shift.return_value = {"id": "NEW_SHIFT"}
+    # Square still holds the person who was there before the change.
+    client.get_scheduled_shift.return_value = {
+        "id": "SHIFT_1",
+        "version": 7,
+        "draft_shift_details": {
+            "team_member_id": "TM_SOMEONE_ELSE",
+            "job_id": "JOB_OLD",
+            "start_at": "2026-09-12T15:00:00-02:30",
+            "end_at": "2026-09-12T21:00:00-02:30",
+            "notes": "Spirit Scheduling Agent",
+        },
+    }
+    result = update_run_in_square(run, user=user, client=client)
+
+    assert result.updated >= 1
+    assert not result.published_blocked
+    assert not result.failed
+    client.update_draft_shift.assert_called()
+    _, kwargs = client.update_draft_shift.call_args
+    # The version Square gave us is echoed back, so a shift edited meanwhile is
+    # rejected rather than silently overwritten.
+    assert kwargs["version"] == 7
+    # Notes and anything else Square holds survive the correction.
+    assert kwargs["draft_shift_details"]["notes"] == "Spirit Scheduling Agent"
+    assert kwargs["draft_shift_details"]["team_member_id"] == f"TM_{assignment.employee_id}"
+
+
+@pytest.mark.django_db
+def test_a_published_shift_is_reported_and_left_alone(monkeypatch, settings):
+    """Staff have been told those hours; the app must not rewrite them underneath."""
+    from scheduling.services.square_production_sync import update_run_in_square
+
+    run, user = _mapped_run(monkeypatch, settings)
+    assignment = run.assignments.select_related("employee").first()
+    _record_sent(run, assignment, "SHIFT_PUB")
+
+    client = MagicMock(spec=SquareClient)
+    client.create_draft_shift.return_value = {"id": "NEW_SHIFT"}
+    client.get_scheduled_shift.return_value = {
+        "id": "SHIFT_PUB",
+        "version": 3,
+        "published_shift_details": {
+            "team_member_id": "TM_SOMEONE_ELSE",
+            "job_id": "JOB_OLD",
+            "start_at": "2026-09-12T15:00:00-02:30",
+            "end_at": "2026-09-12T21:00:00-02:30",
+        },
+    }
+    result = update_run_in_square(run, user=user, client=client)
+
+    assert result.updated == 0
+    assert result.published_blocked
+    assert assignment.employee.display_name in result.published_blocked[0]
+    client.update_draft_shift.assert_not_called()
+    client.delete_draft_shift.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_a_shift_square_already_matches_is_left_alone(monkeypatch, settings):
+    """Re-syncing an unchanged schedule must not churn Square."""
+    from scheduling.services.square_production_sync import (
+        preview_production_sync,
+        update_run_in_square,
+    )
+
+    run, user = _mapped_run(monkeypatch, settings)
+    # Every assignment already in Square, holding exactly what the schedule says.
+    rows = {r.assignment_id: r for r in preview_production_sync(run).rows}
+    by_shift = {}
+    for assignment in run.assignments.all():
+        shift_id = f"SHIFT_{assignment.pk}"
+        _record_sent(run, assignment, shift_id)
+        by_shift[shift_id] = rows[assignment.pk]
+
+    def as_square_holds_it(shift_id):
+        row = by_shift[shift_id]
+        return {
+            "id": shift_id,
+            "version": 1,
+            "draft_shift_details": {
+                "team_member_id": row.square_team_member_id,
+                "job_id": row.square_job_id,
+                "start_at": row.start_at,
+                "end_at": row.end_at,
+            },
+        }
+
+    client = MagicMock(spec=SquareClient)
+    client.create_draft_shift.return_value = {"id": "NEW_SHIFT"}
+    client.get_scheduled_shift.side_effect = as_square_holds_it
+    result = update_run_in_square(run, user=user, client=client)
+
+    assert result.unchanged == run.assignments.count()
+    assert result.changed_anything is False
+    client.update_draft_shift.assert_not_called()
+    client.create_draft_shift.assert_not_called()
+    client.delete_draft_shift.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_a_shift_square_will_not_move_is_reported_never_deleted(monkeypatch, settings):
+    """A conflict is reported and the shift left alone; it is never deleted to force it.
+
+    An earlier version deleted the draft and rebuilt it to break an overlap Square kept
+    refusing. The rebuild is refused for the same overlap, so the shift ended up deleted
+    and not recreated - gone from Square entirely. Seven real shifts were lost that way.
+    """
+    from integrations.square.exceptions import SquareAPIError
+    from scheduling.services.square_production_sync import update_run_in_square
+
+    run, user = _mapped_run(monkeypatch, settings)
+    assignment = run.assignments.select_related("employee").first()
+    _record_sent(run, assignment, "SHIFT_STUCK")
+
+    client = MagicMock(spec=SquareClient)
+    client.create_draft_shift.return_value = {"id": "NEW_SHIFT"}
+    client.get_scheduled_shift.return_value = {
+        "id": "SHIFT_STUCK",
+        "version": 2,
+        "draft_shift_details": {
+            "team_member_id": "TM_SOMEONE_ELSE",
+            "job_id": "JOB_OLD",
+            "start_at": "2026-09-12T15:00:00-02:30",
+            "end_at": "2026-09-12T21:00:00-02:30",
+        },
+    }
+    client.update_draft_shift.side_effect = SquareAPIError(
+        "BAD_REQUEST: This team member already has a shift", status_code=400
+    )
+
+    result = update_run_in_square(run, user=user, client=client)
+
+    assert result.failed, "an unresolvable clash must be reported"
+    assert "already has a shift" in result.failed[0]
+    # The shift Square would not move is still there.
+    client.delete_draft_shift.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_the_push_button_is_shown_once_a_run_is_in_square(client, monkeypatch, settings):
+    """It must not sit behind the first-sync gates.
+
+    Those require assignments still to be created, which an already-synced schedule does
+    not have - so the button was hidden in exactly the situation it exists for.
+    """
+    run, user = _mapped_run(monkeypatch, settings)
+    client.force_login(user)
+
+    before = client.get(f"/schedules/{run.pk}/square-sync/").content.decode()
+    assert "Push changes to Square" not in before
+
+    for assignment in run.assignments.all():
+        _record_sent(run, assignment, f"SHIFT_{assignment.pk}")
+
+    after = client.get(f"/schedules/{run.pk}/square-sync/").content.decode()
+    assert "Push changes to Square" in after
+    assert f"/schedules/{run.pk}/square-update/" in after
+    # Counted per assignment, not per shift id ever written.
+    assert f"{run.assignments.count()} shifts were sent" in after

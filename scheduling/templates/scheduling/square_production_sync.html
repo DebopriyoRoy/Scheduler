@@ -205,6 +205,33 @@
   </div>
 </div>
 
+{% if already_in_square %}
+<!-- Pushing changes is not part of the first-sync flow and must not sit behind its
+     gates: those require shifts still to be created, which is exactly what an already
+     synced schedule does not have. It was hidden precisely when it was needed. -->
+<h2 class="h4 mb-3">Update Square</h2>
+<div class="card border-0 shadow-sm mb-5">
+  <div class="card-body">
+    <div class="alert alert-primary">
+      <strong>This schedule is already in Square.</strong> Pushing changes brings Square in
+      line with the schedule as it stands now &mdash; people swapped, hours moved,
+      positions added or removed since it was first sent.
+      <hr class="my-2">
+      <span class="small">Only <strong>unpublished drafts</strong> can be changed from here. Anything already
+      published to staff is reported back and left exactly as it is, because those hours
+      have already been given out.</span>
+    </div>
+    <form method="post" action="{% url 'square_production_update' schedule_run.pk %}">
+      {% csrf_token %}
+      <button class="btn btn-primary btn-lg" onclick="return confirm('Update the draft shifts in Square Production to match this schedule?');">
+        Push changes to Square
+      </button>
+      <span class="ms-2 text-secondary small">{{ square_shift_count }} shift{{ square_shift_count|pluralize }} were sent from this schedule.</span>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <!-- Step 3: Full Production Schedule Sync Section -->
 <h2 class="h4 mb-3">3. Full Production Draft Synchronization</h2>
 <div class="card border-0 shadow-sm mb-5">

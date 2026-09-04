@@ -2,7 +2,9 @@ import hashlib
 import logging
 import re
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from django.utils import timezone
@@ -1078,3 +1080,292 @@ def has_untracked_square_creations(schedule_run) -> bool:
         )
         .exists()
     )
+
+
+@dataclass(frozen=True)
+class SquareUpdateResult:
+    """What a re-sync did to a run already sitting in Square."""
+
+    created: int
+    updated: int
+    unchanged: int
+    deleted: int
+    published_blocked: tuple[str, ...]
+    failed: tuple[str, ...]
+
+    @property
+    def changed_anything(self) -> bool:
+        return bool(self.created or self.updated or self.deleted)
+
+
+def _same_instant(left: object, right: object) -> bool:
+    """Whether two timestamps name the same moment, however they are written.
+
+    Square echoes times back in the location's own offset - 14:00:00-02:30 - where this
+    application sends UTC - 16:30:00+00:00. Those are the same instant, and comparing
+    the strings said they were different, so every re-sync rewrote every shift and
+    reported nothing as unchanged.
+    """
+    try:
+        return datetime.fromisoformat(str(left)) == datetime.fromisoformat(str(right))
+    except (TypeError, ValueError):
+        return str(left) == str(right)
+
+
+def _draft_matches(details: Mapping[str, Any], want: Mapping[str, Any]) -> bool:
+    """Whether Square already holds exactly this person, job and window."""
+    if any(
+        str(details.get(field, "")) != str(want[field])
+        for field in ("team_member_id", "job_id")
+    ):
+        return False
+    return all(
+        _same_instant(details.get(field), want[field]) for field in ("start_at", "end_at")
+    )
+
+
+def _shift_ids_for(schedule_run) -> dict[int, str]:
+    """The Square shift this application created for each assignment.
+
+    Read from the audit log rather than by searching Square: a search by date and
+    location sweeps up shifts a manager entered by hand, and this must only ever touch
+    what it created itself.
+    """
+    rows = (
+        schedule_run.square_sync_audit_logs.filter(
+            action_type__in=(
+                SquareSyncAuditAction.PRODUCTION_DRAFT_CREATED,
+                SquareSyncAuditAction.PRODUCTION_PILOT_CREATED,
+            ),
+            assignment__isnull=False,
+        )
+        .exclude(square_scheduled_shift_id="")
+        .exclude(square_scheduled_shift_id=None)
+        .order_by("id")
+    )
+    return {row.assignment_id: row.square_scheduled_shift_id for row in rows}
+
+
+def update_run_in_square(schedule_run, user=None, client=None) -> SquareUpdateResult:
+    """Bring Square in line with this run after it has already been synced.
+
+    The first sync only ever created shifts, and skipped anything already in Square as
+    ALREADY_EXISTS. That is correct for a first pass and wrong for every pass after it:
+    a shift whose person or hours were changed here matched on date and was left alone,
+    so corrections made after approval never reached Square at all.
+
+    Square decides what may be touched, not this application. An unpublished draft is
+    still management's own working copy and is updated in place. A published shift has
+    been given to staff, so it is reported back untouched rather than rewritten under
+    someone who has already been told when they are working.
+    """
+    config = SquareConfig.from_env()
+    config.assert_write_allowed()
+
+    preview = preview_production_sync(schedule_run, client=client)
+    prod_config = SquareConfig(
+        environment=SquareEnvironment.PRODUCTION,
+        sandbox_access_token=config.sandbox_access_token,
+        production_access_token=config.production_access_token,
+        location_id=preview.location_id,
+        api_version=config.api_version,
+        request_timeout_seconds=config.request_timeout_seconds,
+        production_writes_enabled=True,
+    )
+    api = client or SquareClient(prod_config)
+
+    known = _shift_ids_for(schedule_run)
+    rows_by_assignment = {row.assignment_id: row for row in preview.rows}
+
+    created = updated = unchanged = deleted = 0
+    published_blocked: list[str] = []
+    failed: list[str] = []
+    pending: list[tuple] = []
+    still_stuck: list[tuple] = []
+
+    def audit(action, assignment, shift_id, details):
+        SquareSyncAuditLog.objects.create(
+            action_type=action,
+            environment=SquareEnvironment.PRODUCTION.value,
+            user=user if user and user.is_authenticated else None,
+            schedule_run=schedule_run,
+            assignment=assignment,
+            square_scheduled_shift_id=shift_id or "",
+            details=details,
+        )
+
+    for assignment in schedule_run.assignments.select_related(
+        "employee", "show", "role", "shift_template"
+    ):
+        row = rows_by_assignment.get(assignment.id)
+        if row is None or not row.square_team_member_id or not row.square_job_id:
+            continue
+
+        want = {
+            "team_member_id": row.square_team_member_id,
+            "job_id": row.square_job_id,
+            "start_at": row.start_at,
+            "end_at": row.end_at,
+        }
+        who = f"{assignment.employee.display_name} on {assignment.shift_template.name}"
+        shift_id = known.get(assignment.id)
+
+        # Never synced before: this is an ordinary create.
+        if shift_id is None:
+            if row.result_status != "READY_TO_CREATE":
+                continue
+            try:
+                notes = (
+                    f"Spirit Scheduling Agent\n"
+                    f"Show: {assignment.show.title}\n"
+                    f"Assignment: {assignment.get_assignment_type_display()}\n"
+                    f"Expected Guests: {assignment.show.planning_guest_count}"
+                )
+                draft = api.create_draft_shift(
+                    idempotency_key=shift_idempotency_key(
+                        assignment.id,
+                        location_id=preview.location_id,
+                        notes=notes,
+                        **want,
+                    ),
+                    location_id=preview.location_id,
+                    notes=notes,
+                    **want,
+                )
+                created += 1
+                audit(
+                    SquareSyncAuditAction.PRODUCTION_DRAFT_CREATED,
+                    assignment,
+                    draft.get("id", ""),
+                    {"added_after_first_sync": True},
+                )
+            except SquareIntegrationError as exc:
+                failed.append(f"{who}: {exc}")
+                audit(
+                    SquareSyncAuditAction.PRODUCTION_DRAFT_FAILED,
+                    assignment,
+                    "",
+                    {"error": str(exc)},
+                )
+            continue
+
+        try:
+            shift = api.get_scheduled_shift(shift_id)
+        except SquareAPIError as exc:
+            if exc.status_code == 404:
+                # Gone from Square; nothing here can update it.
+                failed.append(f"{who}: the shift is no longer in Square")
+                continue
+            failed.append(f"{who}: {exc}")
+            continue
+
+        if shift.get("published_shift_details"):
+            details = shift.get("published_shift_details") or {}
+            if not _draft_matches(details, want):
+                published_blocked.append(who)
+                audit(
+                    SquareSyncAuditAction.PRODUCTION_PUBLISHED_UNCHANGED,
+                    assignment,
+                    shift_id,
+                    {"reason": "published in Square; staff have been told these hours"},
+                )
+            else:
+                unchanged += 1
+            continue
+
+        draft_details = dict(shift.get("draft_shift_details") or {})
+        if _draft_matches(draft_details, want):
+            unchanged += 1
+            continue
+
+        pending.append((assignment, shift_id, want, draft_details, who))
+
+    # Square refuses to give one person two overlapping shifts, and these are applied
+    # one at a time - so moving somebody onto a shift while their old one still stands
+    # is rejected until the old one has moved. Repeating the pass clears those chains:
+    # each round frees the next. Rounds stop as soon as one makes no progress.
+    while pending:
+        still_stuck = []
+        for assignment, shift_id, want, draft_details, who in pending:
+            shift = api.get_scheduled_shift(shift_id)
+            details = dict(shift.get("draft_shift_details") or draft_details)
+            if _draft_matches(details, want):
+                unchanged += 1
+                continue
+            # Echo back everything Square holds with only the changed fields corrected,
+            # so notes, location and timezone survive untouched.
+            details.update(want)
+            try:
+                api.update_draft_shift(
+                    shift_id, version=shift.get("version", 0), draft_shift_details=details
+                )
+                updated += 1
+                audit(
+                    SquareSyncAuditAction.PRODUCTION_DRAFT_UPDATED, assignment, shift_id,
+                    {"now": want},
+                )
+            except SquareIntegrationError as exc:
+                still_stuck.append((assignment, shift_id, want, details, who, str(exc)))
+
+        if len(still_stuck) == len(pending):
+            break
+        pending = [row[:5] for row in still_stuck]
+
+    # Anything still stuck is reported, never forced. An earlier version deleted the
+    # draft and rebuilt it to break the cycle, which loses the shift outright whenever
+    # the rebuild is refused for the same overlap that blocked the update - and it was:
+    # seven shifts were deleted and could not be recreated. A conflict a manager can see
+    # and resolve is always better than a shift silently gone from Square.
+    for _assignment, shift_id, _want, _details, who, last_error in still_stuck:
+        failed.append(f"{who}: {last_error}")
+        audit(
+            SquareSyncAuditAction.PRODUCTION_DRAFT_UPDATE_FAILED,
+            _assignment,
+            shift_id,
+            {"error": last_error, "note": "left as it was; resolve the clash in Square"},
+        )
+
+    # Shifts whose assignment has since been removed here must not linger in Square.
+    live_assignment_ids = set(
+        schedule_run.assignments.values_list("id", flat=True)
+    )
+    for assignment_id, shift_id in known.items():
+        if assignment_id in live_assignment_ids:
+            continue
+        try:
+            api.delete_draft_shift(shift_id)
+            deleted += 1
+            audit(SquareSyncAuditAction.PRODUCTION_DRAFT_DELETED, None, shift_id,
+                  {"reason": "the assignment was removed from this schedule"})
+        except SquarePublishedShiftError:
+            published_blocked.append(f"a shift no longer on this schedule ({shift_id})")
+            audit(SquareSyncAuditAction.PRODUCTION_PUBLISHED_UNCHANGED, None, shift_id,
+                  {"reason": "published in Square"})
+        except SquareAPIError as exc:
+            if exc.status_code != 404:
+                failed.append(f"shift {shift_id}: {exc}")
+        except SquareIntegrationError as exc:
+            failed.append(f"shift {shift_id}: {exc}")
+
+    result = SquareUpdateResult(
+        created=created,
+        updated=updated,
+        unchanged=unchanged,
+        deleted=deleted,
+        published_blocked=tuple(published_blocked),
+        failed=tuple(failed),
+    )
+    audit(
+        SquareSyncAuditAction.PRODUCTION_SYNC_COMPLETED,
+        None,
+        "",
+        {
+            "created": created,
+            "updated": updated,
+            "unchanged": unchanged,
+            "deleted": deleted,
+            "published_blocked": list(published_blocked),
+            "failed": list(failed),
+        },
+    )
+    return result
