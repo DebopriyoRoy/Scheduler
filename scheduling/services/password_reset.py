@@ -116,3 +116,39 @@ def email_link(user, link: str) -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001 - any failure falls back to the file
         return False, f"Mail could not be sent ({type(exc).__name__}: {exc})."
     return True, mask(address)
+
+
+def email_invitation(user, link: str, invited_by: str) -> tuple[bool, str]:
+    """Tell a new colleague their account exists and let them choose the password.
+
+    The inviter never sets it. Handing someone a password to "change later" means it
+    is written down somewhere, shared over something, and usually never changed - the
+    link lets them pick their own and means nobody else ever knew it.
+    """
+    from django.conf import settings
+    from django.core.mail import send_mail
+
+    if not getattr(settings, "EMAIL_IS_CONFIGURED", False):
+        return False, "No mail account is configured."
+    address = (user.email or "").strip()
+    if not address:
+        return False, f"No email address was given for “{user.username}”."
+
+    try:
+        send_mail(
+            subject="Your Spirit Scheduling Agent account",
+            message=(
+                f"{invited_by} has set up an account for you on the Spirit Scheduling "
+                f"Agent.\n\n"
+                f"Your username is “{user.username}”. Open this link to choose a "
+                f"password:\n\n{link}\n\n"
+                f"The link can be used once. If it has expired by the time you get to "
+                f"it, use “Forgotten your password?” on the sign-in page.\n"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[address],
+            fail_silently=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure falls back to the link on screen
+        return False, f"Mail could not be sent ({type(exc).__name__}: {exc})."
+    return True, mask(address)

@@ -39,6 +39,7 @@
             <a class="nav-link {% if request.resolver_match.url_name == 'employees' %}is-current{% endif %}" href="{% url 'employees' %}">Staff &amp; Availability</a>
             <a class="nav-link {% if request.resolver_match.url_name == 'square_pull' %}is-current{% endif %}" href="{% url 'square_pull' %}">Sync</a>
             <a class="nav-link {% if request.resolver_match.url_name == 'schedule_list' %}is-current{% endif %}" href="{% url 'schedule_list' %}">Schedules</a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'management_users' %}is-current{% endif %}" href="{% url 'management_users' %}">Access</a>
             <button class="theme-toggle ms-2" type="button" id="theme-toggle"
                     aria-label="Switch between the light and dark theme" title="Switch theme">◐</button>
             <span class="nav-user ms-2">{{ user.get_username }}</span>

@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -2213,3 +2214,77 @@ def password_reset_confirm(request, uidb64, token):
         return redirect("login")
 
     return render(request, "registration/password_reset_confirm.html", context)
+
+
+@login_required
+def management_users(request):
+    """Who can sign in, and how a colleague is given an account.
+
+    There is deliberately no public sign-up. This page is bound to 127.0.0.1 but the
+    accounts it creates reach real staff data and a live Square connection, so an open
+    registration form would let anyone who can load the page mint themselves a manager.
+    Accounts are made here, by someone already signed in.
+
+    The inviter never chooses the password. Handing someone one to "change later" means
+    it gets written down, shared over something, and usually never changed; the link
+    lets them pick their own and means nobody else ever knew it.
+    """
+    from django.contrib.auth import get_user_model
+
+    from scheduling.services.password_reset import build_link, email_invitation
+
+    users = get_user_model().objects.order_by("-is_active", "username")
+
+    if request.method == "POST" and request.POST.get("action") == "invite":
+        username = (request.POST.get("username") or "").strip()
+        email = (request.POST.get("email") or "").strip()
+
+        if not username or not email:
+            messages.error(request, "A username and an email address are both needed.")
+        elif get_user_model().objects.filter(username__iexact=username).exists():
+            messages.error(request, f"There is already an account called “{username}”.")
+        elif get_user_model().objects.filter(email__iexact=email).exists():
+            messages.error(request, f"{email} is already on another account.")
+        else:
+            new_user = get_user_model().objects.create(
+                username=username, email=email, is_staff=False, is_superuser=False
+            )
+            # No password is set at all, so the account cannot be signed into until
+            # its owner follows the link and chooses one.
+            new_user.set_unusable_password()
+            new_user.save()
+
+            link = build_link(new_user, request)
+            sent, detail = email_invitation(new_user, link, request.user.get_username())
+            if sent:
+                messages.success(
+                    request, f"“{username}” has been invited. The link went to {detail}."
+                )
+            else:
+                messages.warning(
+                    request,
+                    f"“{username}” was created, but {detail} Send them this link "
+                    f"yourself - it can be used once: {link}",
+                )
+        return redirect("management_users")
+
+    if request.method == "POST" and request.POST.get("action") == "deactivate":
+        target = get_user_model().objects.filter(pk=request.POST.get("user_id")).first()
+        if target is None:
+            messages.error(request, "That account no longer exists.")
+        elif target.pk == request.user.pk:
+            # Otherwise one careless click locks the last person out of their own app.
+            messages.error(request, "You cannot deactivate the account you are signed in with.")
+        elif get_user_model().objects.filter(is_active=True).count() <= 1:
+            messages.error(request, "This is the only account that can sign in.")
+        else:
+            target.is_active = False
+            target.save()
+            messages.success(request, f"“{target.username}” can no longer sign in.")
+        return redirect("management_users")
+
+    return render(
+        request,
+        "scheduling/management_users.html",
+        {"users": users, "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False)},
+    )
