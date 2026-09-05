@@ -150,3 +150,26 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = SERVE_OVER_HTTPS
 SECURE_HSTS_PRELOAD = SERVE_OVER_HTTPS
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+
+
+# --- Outgoing email -------------------------------------------------------------
+# Used to send a password-reset code. Gmail refuses an ordinary account password over
+# SMTP, so EMAIL_HOST_PASSWORD must be a Google App Password: myaccount.google.com >
+# Security > 2-Step Verification > App passwords. It is a credential and belongs in
+# .env, which is git-ignored - never in this file.
+#
+# With nothing configured the reset falls back to writing the code to a file in the
+# application's data folder, so a machine with no mail set up is not locked out.
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=True)
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "no-reply@localhost")
+
+# Where a reset code goes when the account being reset has no address of its own.
+PASSWORD_RESET_FALLBACK_EMAIL = os.getenv("PASSWORD_RESET_FALLBACK_EMAIL", "")
+
+# Mail is only attempted when there is something to authenticate with.
+EMAIL_IS_CONFIGURED = bool(EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)

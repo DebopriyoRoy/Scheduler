@@ -2124,6 +2124,7 @@ def password_reset(request):
     rather than by counting attempts, because an attacker who can read the folder has
     the database anyway and one who cannot has nothing to guess against.
     """
+    from django.conf import settings
     from django.contrib.auth import get_user_model
     from django.contrib.auth.password_validation import (
         password_validators_help_texts,
@@ -2144,14 +2145,45 @@ def password_reset(request):
         "code_folder": str(data_dir()),
         "code_minutes": int(CODE_LIFETIME.total_seconds() // 60),
         "password_rules": password_validators_help_texts(),
+        "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False),
+        "email_account": getattr(settings, "EMAIL_HOST_USER", ""),
     }
 
     if request.method == "POST" and request.POST.get("action") == "issue":
+        from scheduling.services.password_reset import email_code
+
+        username = (request.POST.get("username") or "").strip()
+        user = get_user_model().objects.filter(username=username, is_active=True).first()
         try:
-            _, path = issue_code()
+            code, path = issue_code()
         except OSError as exc:
             messages.error(request, f"The reset code could not be written ({exc}).")
             return redirect("password_reset")
+
+        # Email is the front door; the file is what keeps a machine with no mail
+        # configured from being locked out. Sending is never allowed to raise - a mail
+        # server that is down must not take the reset page down with it.
+        if user is not None:
+            sent, detail = email_code(user, code)
+            if sent:
+                # The file stays. It is not a duplicate key - it is the server's
+                # only record of the code that was issued, and deleting it made every
+                # emailed code unverifiable.
+                messages.success(
+                    request,
+                    f"A reset code has been emailed to {detail}. Enter it below with "
+                    f"your new password. It works once and expires in "
+                    f"{context['code_minutes']} minutes.",
+                )
+                return redirect("password_reset")
+            messages.warning(request, f"{detail} Falling back to a code on this Mac.")
+        elif username:
+            messages.warning(
+                request,
+                f"There is no active account called “{username}”. "
+                "A code has still been written to this Mac.",
+            )
+
         messages.success(
             request,
             f"A reset code has been written to {path}. Open that file, copy the code "

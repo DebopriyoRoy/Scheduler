@@ -75,3 +75,66 @@ def check_code(supplied: str) -> tuple[bool, str]:
 def clear_code() -> None:
     """Single use: the code dies with the reset it authorised."""
     _code_path().unlink(missing_ok=True)
+
+
+def recipient_for(user) -> str:
+    """Where this account's reset code should be sent, or "" if nowhere is known."""
+    from django.conf import settings
+
+    return (user.email or "").strip() or getattr(
+        settings, "PASSWORD_RESET_FALLBACK_EMAIL", ""
+    ).strip()
+
+
+def mask(address: str) -> str:
+    """A recognisable but non-disclosing form of an address.
+
+    The reset page is reachable without signing in, so it must not hand a visitor a
+    working address - but it does have to tell the person which inbox to open.
+    """
+    name, _, domain = address.partition("@")
+    if not domain:
+        return "the address on file"
+    if len(name) <= 2:
+        shown = name[:1] + "•"
+    else:
+        shown = f"{name[0]}{'•' * (len(name) - 2)}{name[-1]}"
+    return f"{shown}@{domain}"
+
+
+def email_code(user, code: str) -> tuple[bool, str]:
+    """Send the code. Returns (sent, detail) - detail is safe to show a user.
+
+    Never raises. A mail server that is down, misconfigured or refusing the password
+    must not take the reset page with it: the caller falls back to writing the file,
+    which is the whole reason that path still exists.
+    """
+    from django.conf import settings
+    from django.core.mail import send_mail
+
+    if not getattr(settings, "EMAIL_IS_CONFIGURED", False):
+        return False, "No mail account is configured."
+
+    address = recipient_for(user)
+    if not address:
+        return False, f"No email address is on file for “{user.username}”."
+
+    minutes = int(CODE_LIFETIME.total_seconds() // 60)
+    try:
+        send_mail(
+            subject="Spirit Scheduling Agent - password reset code",
+            message=(
+                f"Your reset code is {code}\n\n"
+                f"It works once and expires in {minutes} minutes.\n\n"
+                f"Enter it on the reset page along with a new password for "
+                f"“{user.username}”.\n\n"
+                f"If you did not ask for this, someone with access to this Mac did. "
+                f"The code alone cannot be used from anywhere else.\n"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[address],
+            fail_silently=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - any mail failure falls back to the file
+        return False, f"Mail could not be sent ({type(exc).__name__}: {exc})."
+    return True, mask(address)
