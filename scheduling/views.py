@@ -2112,3 +2112,82 @@ def schedule_warnings_accept_all(request, run_id):
         "It can be approved now, and the reason is recorded against each one.",
     )
     return redirect("schedule_detail", run_id=run_id)
+
+
+def password_reset(request):
+    """Set a new sign-in password, for someone who cannot get in to ask nicely.
+
+    Deliberately outside @login_required: it exists precisely for a locked-out user.
+    What stands in for the old password is a one-time code written to the application's
+    data folder, which only this macOS account can read - the same boundary already
+    protecting the database. Rate-limited by the code being single-use and short-lived
+    rather than by counting attempts, because an attacker who can read the folder has
+    the database anyway and one who cannot has nothing to guess against.
+    """
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.password_validation import (
+        password_validators_help_texts,
+        validate_password,
+    )
+
+    from scheduling.services.password_reset import (
+        CODE_LIFETIME,
+        check_code,
+        clear_code,
+        data_dir,
+        issue_code,
+    )
+
+    users = get_user_model().objects.filter(is_active=True).order_by("username")
+    context = {
+        "usernames": [u.username for u in users],
+        "code_folder": str(data_dir()),
+        "code_minutes": int(CODE_LIFETIME.total_seconds() // 60),
+        "password_rules": password_validators_help_texts(),
+    }
+
+    if request.method == "POST" and request.POST.get("action") == "issue":
+        try:
+            _, path = issue_code()
+        except OSError as exc:
+            messages.error(request, f"The reset code could not be written ({exc}).")
+            return redirect("password_reset")
+        messages.success(
+            request,
+            f"A reset code has been written to {path}. Open that file, copy the code "
+            f"on the first line, and paste it below. It is good for "
+            f"{context['code_minutes']} minutes and works once.",
+        )
+        return redirect("password_reset")
+
+    if request.method == "POST":
+        username = (request.POST.get("username") or "").strip()
+        code = request.POST.get("code") or ""
+        new = request.POST.get("new_password") or ""
+        again = request.POST.get("confirm_password") or ""
+
+        ok, why = check_code(code)
+        user = get_user_model().objects.filter(username=username, is_active=True).first()
+        if not ok:
+            messages.error(request, why)
+        elif user is None:
+            messages.error(request, f"There is no active account called “{username}”.")
+        elif new != again:
+            messages.error(request, "The two passwords do not match.")
+        else:
+            try:
+                validate_password(new, user)
+            except ValidationError as exc:
+                messages.error(request, " ".join(exc.messages))
+            else:
+                user.set_password(new)
+                user.save()
+                clear_code()
+                messages.success(
+                    request,
+                    f"The password for “{username}” has been changed. Sign in with it now.",
+                )
+                return redirect("login")
+        return render(request, "registration/password_reset.html", context)
+
+    return render(request, "registration/password_reset.html", context)
