@@ -2115,111 +2115,101 @@ def schedule_warnings_accept_all(request, run_id):
 
 
 def password_reset(request):
-    """Set a new sign-in password, for someone who cannot get in to ask nicely.
+    """Ask for a reset link. Deliberately outside @login_required.
 
-    Deliberately outside @login_required: it exists precisely for a locked-out user.
-    What stands in for the old password is a one-time code written to the application's
-    data folder, which only this macOS account can read - the same boundary already
-    protecting the database. Rate-limited by the code being single-use and short-lived
-    rather than by counting attempts, because an attacker who can read the folder has
-    the database anyway and one who cannot has nothing to guess against.
+    A typo is told it is a typo, and a real account is told which inbox the link went
+    to. That does let someone probe which names exist, and on a public site it would be
+    wrong - but this application is bound to 127.0.0.1 on a single Mac, so anyone who
+    can load this page can already read the database beside it. Trading a real
+    usability win against an attacker who is by definition already inside is not a
+    trade worth making the other way.
     """
     from django.conf import settings
+
+    from scheduling.services.password_reset import (
+        build_link,
+        email_link,
+        find_user,
+        write_link_to_disk,
+    )
+
+    context = {"email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False)}
+
+    if request.method == "POST":
+        identifier = (request.POST.get("identifier") or "").strip()
+        user = find_user(identifier)
+
+        if user is None:
+            messages.error(
+                request,
+                f"No active account matches “{identifier}”. Check the spelling, or try "
+                "the other of your username and email address.",
+            )
+            return redirect("password_reset")
+
+        link = build_link(user, request)
+        sent, detail = email_link(user, link)
+        if sent:
+            messages.success(request, f"A reset link has been sent to {detail}.")
+            return redirect("password_reset")
+
+        try:
+            path = write_link_to_disk(link)
+        except OSError as exc:
+            messages.error(request, f"The reset link could not be saved ({exc}).")
+            return redirect("password_reset")
+        messages.warning(
+            request,
+            f"{detail} The link was saved to {path} instead - open that file and "
+            f"follow the link inside.",
+        )
+        return redirect("password_reset")
+
+    return render(request, "registration/password_reset.html", context)
+
+
+def password_reset_confirm(request, uidb64, token):
+    """Set the new password, for someone arriving from the link.
+
+    The token is Django's own: tied to the account's current password hash and last
+    login, so it stops working the moment the password changes, and it expires on its
+    own. Checked before the form is even shown, so a dead link says so rather than
+    taking a password and then refusing it.
+    """
     from django.contrib.auth import get_user_model
     from django.contrib.auth.password_validation import (
         password_validators_help_texts,
         validate_password,
     )
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.encoding import force_str
+    from django.utils.http import urlsafe_base64_decode
 
-    from scheduling.services.password_reset import (
-        CODE_LIFETIME,
-        check_code,
-        clear_code,
-        data_dir,
-        issue_code,
-    )
+    try:
+        user = get_user_model().objects.get(pk=force_str(urlsafe_base64_decode(uidb64)))
+    except (TypeError, ValueError, OverflowError, get_user_model().DoesNotExist):
+        user = None
 
-    users = get_user_model().objects.filter(is_active=True).order_by("username")
-    context = {
-        "usernames": [u.username for u in users],
-        "code_folder": str(data_dir()),
-        "code_minutes": int(CODE_LIFETIME.total_seconds() // 60),
-        "password_rules": password_validators_help_texts(),
-        "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False),
-        "email_account": getattr(settings, "EMAIL_HOST_USER", ""),
-    }
+    if user is None or not default_token_generator.check_token(user, token):
+        return render(request, "registration/password_reset_invalid.html", status=400)
 
-    if request.method == "POST" and request.POST.get("action") == "issue":
-        from scheduling.services.password_reset import email_code
-
-        username = (request.POST.get("username") or "").strip()
-        user = get_user_model().objects.filter(username=username, is_active=True).first()
-        try:
-            code, path = issue_code()
-        except OSError as exc:
-            messages.error(request, f"The reset code could not be written ({exc}).")
-            return redirect("password_reset")
-
-        # Email is the front door; the file is what keeps a machine with no mail
-        # configured from being locked out. Sending is never allowed to raise - a mail
-        # server that is down must not take the reset page down with it.
-        if user is not None:
-            sent, detail = email_code(user, code)
-            if sent:
-                # The file stays. It is not a duplicate key - it is the server's
-                # only record of the code that was issued, and deleting it made every
-                # emailed code unverifiable.
-                messages.success(
-                    request,
-                    f"A reset code has been emailed to {detail}. Enter it below with "
-                    f"your new password. It works once and expires in "
-                    f"{context['code_minutes']} minutes.",
-                )
-                return redirect("password_reset")
-            messages.warning(request, f"{detail} Falling back to a code on this Mac.")
-        elif username:
-            messages.warning(
-                request,
-                f"There is no active account called “{username}”. "
-                "A code has still been written to this Mac.",
-            )
-
-        messages.success(
-            request,
-            f"A reset code has been written to {path}. Open that file, copy the code "
-            f"on the first line, and paste it below. It is good for "
-            f"{context['code_minutes']} minutes and works once.",
-        )
-        return redirect("password_reset")
+    context = {"username": user.username, "password_rules": password_validators_help_texts()}
 
     if request.method == "POST":
-        username = (request.POST.get("username") or "").strip()
-        code = request.POST.get("code") or ""
         new = request.POST.get("new_password") or ""
         again = request.POST.get("confirm_password") or ""
-
-        ok, why = check_code(code)
-        user = get_user_model().objects.filter(username=username, is_active=True).first()
-        if not ok:
-            messages.error(request, why)
-        elif user is None:
-            messages.error(request, f"There is no active account called “{username}”.")
-        elif new != again:
+        if new != again:
             messages.error(request, "The two passwords do not match.")
-        else:
-            try:
-                validate_password(new, user)
-            except ValidationError as exc:
-                messages.error(request, " ".join(exc.messages))
-            else:
-                user.set_password(new)
-                user.save()
-                clear_code()
-                messages.success(
-                    request,
-                    f"The password for “{username}” has been changed. Sign in with it now.",
-                )
-                return redirect("login")
-        return render(request, "registration/password_reset.html", context)
+            return render(request, "registration/password_reset_confirm.html", context)
+        try:
+            validate_password(new, user)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+            return render(request, "registration/password_reset_confirm.html", context)
 
-    return render(request, "registration/password_reset.html", context)
+        user.set_password(new)
+        user.save()
+        messages.success(request, "Your password has been changed. Sign in with it now.")
+        return redirect("login")
+
+    return render(request, "registration/password_reset_confirm.html", context)

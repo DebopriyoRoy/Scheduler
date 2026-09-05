@@ -16,5 +16,10 @@ urlpatterns = [
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
     # Outside the login wall on purpose: it is the way back in for someone locked out.
     path("accounts/reset/", scheduling_views.password_reset, name="password_reset"),
+    path(
+        "accounts/reset/<uidb64>/<token>/",
+        scheduling_views.password_reset_confirm,
+        name="password_reset_confirm",
+    ),
     path("", include("scheduling.urls")),
 ]
