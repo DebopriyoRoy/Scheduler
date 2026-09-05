@@ -1,71 +1,46 @@
-{% extends "scheduling/base.html" %}
+{% extends "registration/auth_base.html" %}
 {% block title %}Create an account | Spirit Scheduling Agent{% endblock %}
-{% block content %}
-<div class="row justify-content-center py-5"><div class="col-md-6 col-lg-5">
-  <div class="card border-0 shadow-sm"><div class="card-body p-4">
-    <h1 class="h3 mb-2">Create an account</h1>
-    {% if needs_approval %}
-      <p class="text-secondary small mb-4">
-        A manager approves new accounts before they can sign in.
-      </p>
-    {% else %}
-      <p class="text-secondary small mb-4">You can sign in as soon as this is done.</p>
-    {% endif %}
+{% block form_card %}
+  <h1>Create an account</h1>
+  {% if needs_approval %}
+    <p class="text-secondary small mb-4">A manager approves new accounts before they can sign in.</p>
+  {% else %}
+    <p class="text-secondary small mb-4">You can sign in as soon as this is done.</p>
+  {% endif %}
 
-    <form method="post">{% csrf_token %}
-      <div class="mb-3">
-        <label class="form-label" for="id_username">Username</label>
-        <input class="form-control" type="text" name="username" id="id_username"
-               autocomplete="username" required autofocus>
+  <form method="post">{% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label" for="id_username">Username</label>
+      <input class="form-control" type="text" name="username" id="id_username"
+             autocomplete="username" required autofocus>
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="id_email">Email address</label>
+      <input class="form-control" type="email" name="email" id="id_email"
+             autocomplete="email" required>
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="id_password">Password</label>
+      <div class="input-group">
+        <input class="form-control" type="password" name="password" id="id_password"
+               autocomplete="new-password" required>
+        <button class="btn btn-outline-secondary" type="button" id="toggle-password"
+                aria-controls="id_password" aria-pressed="false"
+                aria-label="Show the password">Show</button>
       </div>
-      <div class="mb-3">
-        <label class="form-label" for="id_email">Email address</label>
-        <input class="form-control" type="email" name="email" id="id_email"
-               autocomplete="email" required>
-      </div>
-      <div class="mb-3">
-        <label class="form-label" for="id_password">Password</label>
-        <div class="input-group">
-          <input class="form-control" type="password" name="password" id="id_password"
-                 autocomplete="new-password" required>
-          <button class="btn btn-outline-secondary" type="button" id="toggle-password"
-                  aria-controls="id_password" aria-pressed="false"
-                  aria-label="Show the password">Show</button>
-        </div>
-        {% if password_rules %}
-          <ul class="form-text ps-3 mb-0">
-            {% for rule in password_rules %}<li>{{ rule }}</li>{% endfor %}
-          </ul>
-        {% endif %}
-      </div>
-      <div class="mb-3">
-        <label class="form-label" for="id_confirm_password">Password again</label>
-        <input class="form-control" type="password" name="confirm_password"
-               id="id_confirm_password" autocomplete="new-password" required>
-      </div>
-      <button class="btn btn-primary w-100" type="submit">Create the account</button>
-    </form>
+      {% if password_rules %}
+        <ul class="form-text ps-3 mb-0">
+          {% for rule in password_rules %}<li>{{ rule }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+    <div class="mb-4">
+      <label class="form-label" for="id_confirm_password">Password again</label>
+      <input class="form-control" type="password" name="confirm_password"
+             id="id_confirm_password" autocomplete="new-password" required>
+    </div>
+    <button class="btn btn-primary w-100" type="submit">Create the account</button>
+  </form>
 
-    <p class="small text-center mt-4 mb-0">
-      Already have one? <a href="{% url 'login' %}">Sign in</a>
-    </p>
-  </div></div>
-</div></div>
-<script>
-  (function () {
-    var field = document.getElementById("id_password");
-    var toggle = document.getElementById("toggle-password");
-    if (!field || !toggle) return;
-    toggle.addEventListener("click", function () {
-      var revealed = field.type === "text";
-      field.type = revealed ? "password" : "text";
-      toggle.textContent = revealed ? "Show" : "Hide";
-      toggle.setAttribute("aria-pressed", revealed ? "false" : "true");
-      toggle.setAttribute("aria-label", (revealed ? "Show" : "Hide") + " the password");
-      var caret = field.value.length;
-      field.focus();
-      field.setSelectionRange(caret, caret);
-    });
-  })();
-</script>
+  <div class="auth-links">Already have one? <a href="{% url 'login' %}">Sign in</a></div>
 {% endblock %}

@@ -23,6 +23,7 @@
   <link href="{% static 'scheduling/css/app.css' %}" rel="stylesheet">
 </head>
 <body>
+  {% block chrome %}
   <nav class="navbar navbar-expand-lg spirit-nav">
     <div class="container">
       <a class="navbar-brand" href="{% url 'dashboard' %}">Spirit Scheduling Agent</a>
@@ -52,8 +53,9 @@
       {% endif %}
     </div>
   </nav>
+  {% endblock %}
 
-  <main class="container py-4">
+  <main class="{% block main_class %}container py-4{% endblock %}">
     {% for message in messages %}
       <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %}" role="alert">{{ message }}</div>
     {% endfor %}
@@ -73,5 +75,6 @@
       });
     })();
   </script>
+  {% block extra_body %}{% endblock %}
 </body>
 </html>

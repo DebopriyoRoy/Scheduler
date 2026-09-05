@@ -48,11 +48,11 @@ def _link_from_outbox() -> str:
 
 # --- asking for the link ----------------------------------------------------------
 
-def test_the_page_is_reachable_without_signing_in(client):
+def test_the_page_is_reachable_without_signing_in(client, db):
     assert client.get(reverse("password_reset")).status_code == 200
 
 
-def test_the_sign_in_page_links_to_it(client):
+def test_the_sign_in_page_links_to_it(client, db):
     assert reverse("password_reset") in client.get(reverse("login")).content.decode()
 
 

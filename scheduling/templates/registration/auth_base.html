@@ -1,0 +1,59 @@
+{% extends "scheduling/base.html" %}
+{# The signed-out pages share one composition. The nav is dropped: logged out it holds
+   only the wordmark, which the panel says far better. #}
+{% block chrome %}{% endblock %}
+{% block main_class %}auth-split{% endblock %}
+
+{% block content %}
+<section class="auth-house">
+  <div>
+    <p class="auth-venue">Spirit of Newfoundland &middot; Theatre Gower</p>
+    <h1 class="auth-wordmark"><span class="bulb"></span>Spirit<br>Scheduling Agent</h1>
+    <p class="auth-lede">
+      Who is on the floor, who is behind the bar, and who is on call &mdash; built from
+      the hours everyone actually keeps.
+    </p>
+  </div>
+
+  {% if next_show %}
+    <div class="auth-billing">
+      <span class="label">Next up</span>
+      <span class="title">{{ next_show.title }}</span>
+      <span class="when">{{ next_show.date|date:"D j M" }} &middot; {{ next_show.start_time|time:"H:i" }}</span>
+    </div>
+  {% else %}
+    <div class="auth-billing">
+      <span class="label">St. John&rsquo;s, Newfoundland</span>
+    </div>
+  {% endif %}
+</section>
+
+<section class="auth-form-side">
+  <div class="auth-form">
+    {% block form_card %}{% endblock %}
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+  // type="button" matters: a bare <button> in a form defaults to submit, so revealing
+  // the password would post the form instead.
+  (function () {
+    var toggle = document.getElementById("toggle-password");
+    if (!toggle) return;
+    var field = document.getElementById(toggle.getAttribute("aria-controls"));
+    if (!field) return;
+    toggle.addEventListener("click", function () {
+      var revealed = field.type === "text";
+      field.type = revealed ? "password" : "text";
+      toggle.textContent = revealed ? "Show" : "Hide";
+      toggle.setAttribute("aria-pressed", revealed ? "false" : "true");
+      toggle.setAttribute("aria-label", (revealed ? "Show" : "Hide") + " the password");
+      var caret = field.value.length;
+      field.focus();
+      field.setSelectionRange(caret, caret);
+    });
+  })();
+</script>
+{% endblock %}

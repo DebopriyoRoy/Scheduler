@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import LoginView
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
@@ -2134,7 +2135,10 @@ def password_reset(request):
         write_link_to_disk,
     )
 
-    context = {"email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False)}
+    context = {
+        "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False),
+        **auth_page_context(),
+    }
 
     if request.method == "POST":
         identifier = (request.POST.get("identifier") or "").strip()
@@ -2194,7 +2198,11 @@ def password_reset_confirm(request, uidb64, token):
     if user is None or not default_token_generator.check_token(user, token):
         return render(request, "registration/password_reset_invalid.html", status=400)
 
-    context = {"username": user.username, "password_rules": password_validators_help_texts()}
+    context = {
+        "username": user.username,
+        "password_rules": password_validators_help_texts(),
+        **auth_page_context(),
+    }
 
     if request.method == "POST":
         new = request.POST.get("new_password") or ""
@@ -2348,6 +2356,7 @@ def register(request):
     context = {
         "password_rules": password_validators_help_texts(),
         "needs_approval": needs_approval,
+        **auth_page_context(),
     }
 
     if request.method != "POST":
@@ -2391,3 +2400,32 @@ def register(request):
             return redirect("login")
 
     return render(request, "registration/register.html", context)
+
+
+def auth_page_context() -> dict:
+    """Shared by every signed-out page: what is on next.
+
+    Public billing only. Private bookings and unconfirmed Christmas placeholders are
+    excluded because this panel is visible before anyone signs in, and a private
+    wedding is not something to advertise on a login screen.
+    """
+    from scheduling.models import Show
+
+    show = (
+        Show.objects.filter(active=True, date__gte=date.today())
+        .exclude(title__icontains="private")
+        .exclude(title__icontains="waitlist")
+        .exclude(title__icontains="tbd")
+        .order_by("date", "start_time")
+        .first()
+    )
+    return {"next_show": show}
+
+
+class SpiritLoginView(LoginView):
+    """The stock login view, with the billing the panel shows."""
+
+    template_name = "registration/login.html"
+
+    def get_context_data(self, **kwargs):
+        return {**super().get_context_data(**kwargs), **auth_page_context()}
