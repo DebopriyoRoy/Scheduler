@@ -10,6 +10,42 @@
   </p>
 </div>
 
+{% if pending_users %}
+  <div class="card border-0 shadow-sm mb-4 border-start border-4 border-warning">
+    <div class="card-body">
+      <h2 class="h5 mb-1">Waiting for approval</h2>
+      <p class="text-secondary small">
+        These people used the sign-up link. They cannot sign in until you approve them.
+      </p>
+      <table class="table table-sm align-middle mb-0">
+        <tbody>
+          {% for account in pending_users %}
+            <tr>
+              <td class="fw-medium">{{ account.username }}</td>
+              <td class="text-secondary small">{{ account.email|default:"—" }}</td>
+              <td class="text-secondary small">asked {{ account.date_joined|date:"j M Y, H:i" }}</td>
+              <td class="text-end">
+                <form method="post" class="d-inline">{% csrf_token %}
+                  <input type="hidden" name="action" value="approve">
+                  <input type="hidden" name="user_id" value="{{ account.pk }}">
+                  <button class="btn btn-sm btn-primary" type="submit">Approve</button>
+                </form>
+                <form method="post" class="d-inline"
+                      onsubmit="return confirm('Remove the request from {{ account.username }}?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="reject">
+                  <input type="hidden" name="user_id" value="{{ account.pk }}">
+                  <button class="btn btn-sm btn-outline-secondary" type="submit">Remove</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
 <div class="card border-0 shadow-sm mb-4"><div class="card-body">
   <h2 class="h5 mb-1">Invite a colleague</h2>
   <p class="text-secondary small">
@@ -76,7 +112,23 @@
 </table>
 </div></div>
 
+{% if disabled_users %}
+  <div class="card border-0 shadow-sm mt-4"><div class="card-body">
+    <h2 class="h6 mb-2">Disabled</h2>
+    <p class="text-secondary small mb-0">
+      {% for account in disabled_users %}{{ account.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      &mdash; kept for their history, unable to sign in.
+    </p>
+  </div></div>
+{% endif %}
+
 <p class="text-secondary small mt-3 mb-0">
+  {% if registration_open %}
+    <strong>Anyone who opens the sign-up link can sign in immediately.</strong>
+    Set <code>REGISTRATION_REQUIRES_APPROVAL=true</code> to hold new accounts here first.
+  {% else %}
+    New accounts from the sign-up link wait here until approved.
+  {% endif %}
   Disabling keeps the account and its history but stops it signing in. An invitation
   link works once; if it lapses, the person can use
   <em>Forgotten your password?</em> on the sign-in page.

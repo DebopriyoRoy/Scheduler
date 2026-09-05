@@ -173,3 +173,12 @@ PASSWORD_RESET_FALLBACK_EMAIL = os.getenv("PASSWORD_RESET_FALLBACK_EMAIL", "")
 
 # Mail is only attempted when there is something to authenticate with.
 EMAIL_IS_CONFIGURED = bool(EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
+
+# --- Self-registration ----------------------------------------------------------
+# The sign-in page carries a "Create an account" link. New accounts are held inactive
+# until an existing manager approves them on the Access page, because this application
+# reaches real staff records and a live Square connection and is reachable by anything
+# on the machine.
+#
+# Set REGISTRATION_REQUIRES_APPROVAL=false to let people in the moment they register.
+REGISTRATION_REQUIRES_APPROVAL = env_bool("REGISTRATION_REQUIRES_APPROVAL", default=True)

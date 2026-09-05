@@ -1,9 +1,9 @@
 """Adding a colleague, without a public sign-up form.
 
-There is deliberately no registration page. The application binds to 127.0.0.1, but the
-accounts it hands out reach real staff records and a live Square connection, so an open
-form would let anyone who can load the page mint themselves a manager. Accounts are
-created by someone already signed in.
+Two routes in: a manager invites someone from here, or a person registers themselves
+from the sign-in page and waits for approval. Either way the guarantee is the same -
+nobody signs in until a manager says so, because these accounts reach real staff
+records and a live Square connection.
 
 The inviter never chooses the password. Handing someone one to "change later" means it
 is written down, shared over something, and usually never changed.
@@ -45,13 +45,25 @@ def test_the_page_needs_a_sign_in(client, db):
     assert reverse("login") in response.url
 
 
-def test_there_is_no_public_sign_up_route():
-    """The absence is the security model, so it is worth asserting."""
-    from django.urls import NoReverseMatch
+def test_registering_does_not_by_itself_grant_access(client, db, settings):
+    """Sign-up is public; getting in is not.
 
-    for name in ("register", "signup", "sign_up", "create_account"):
-        with pytest.raises(NoReverseMatch):
-            reverse(name)
+    This replaces an earlier test that asserted no registration route existed at all.
+    A registration link was asked for and added, so the guarantee moved rather than
+    disappeared: anyone may ask for an account, nobody signs in until a manager says so.
+    """
+    settings.REGISTRATION_REQUIRES_APPROVAL = True
+    client.post(
+        reverse("register"),
+        {
+            "username": "stranger", "email": "stranger@example.com",
+            "password": "a-long-enough-chosen-secret",
+            "confirm_password": "a-long-enough-chosen-secret",
+        },
+    )
+    created = get_user_model().objects.get(username="stranger")
+    assert not created.is_active
+    assert not client.login(username="stranger", password="a-long-enough-chosen-secret")
 
 
 def test_an_invitation_creates_an_account_that_cannot_yet_sign_in(client, manager, mail_on):

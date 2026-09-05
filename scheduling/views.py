@@ -2268,6 +2268,34 @@ def management_users(request):
                 )
         return redirect("management_users")
 
+    if request.method == "POST" and request.POST.get("action") == "approve":
+        target = get_user_model().objects.filter(pk=request.POST.get("user_id")).first()
+        if target is None:
+            messages.error(request, "That account no longer exists.")
+        else:
+            target.is_active = True
+            target.save()
+            messages.success(request, f"“{target.username}” can now sign in.")
+        return redirect("management_users")
+
+    if request.method == "POST" and request.POST.get("action") == "reject":
+        target = get_user_model().objects.filter(pk=request.POST.get("user_id")).first()
+        if target is None:
+            messages.error(request, "That account no longer exists.")
+        elif target.last_login is not None:
+            # Only ever removes an account that has never been used. Anything that has
+            # signed in has history worth keeping; that one gets disabled, not deleted.
+            messages.error(
+                request,
+                f"“{target.username}” has signed in before, so it can be disabled but "
+                "not deleted.",
+            )
+        else:
+            name = target.username
+            target.delete()
+            messages.success(request, f"The request from “{name}” has been removed.")
+        return redirect("management_users")
+
     if request.method == "POST" and request.POST.get("action") == "deactivate":
         target = get_user_model().objects.filter(pk=request.POST.get("user_id")).first()
         if target is None:
@@ -2286,5 +2314,80 @@ def management_users(request):
     return render(
         request,
         "scheduling/management_users.html",
-        {"users": users, "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False)},
+        {
+            "users": users.filter(is_active=True),
+            "disabled_users": users.filter(is_active=False, last_login__isnull=False),
+            # Never signed in and not yet active: someone who used the sign-up link.
+            "pending_users": users.filter(is_active=False, last_login__isnull=True),
+            "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False),
+            "registration_open": not getattr(
+                settings, "REGISTRATION_REQUIRES_APPROVAL", True
+            ),
+        },
     )
+
+
+def register(request):
+    """Create an account. Outside @login_required - that is the whole point.
+
+    New accounts are held inactive until a manager approves them, unless
+    REGISTRATION_REQUIRES_APPROVAL is turned off. The link is public and this
+    application reaches staff records and a live Square connection, so "anyone who can
+    load the page gets in" is not a default worth shipping - but it is one setting away
+    for whoever wants it.
+
+    The person chooses their own password here, validated by Django's own rules.
+    """
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.password_validation import (
+        password_validators_help_texts,
+        validate_password,
+    )
+
+    needs_approval = getattr(settings, "REGISTRATION_REQUIRES_APPROVAL", True)
+    context = {
+        "password_rules": password_validators_help_texts(),
+        "needs_approval": needs_approval,
+    }
+
+    if request.method != "POST":
+        return render(request, "registration/register.html", context)
+
+    username = (request.POST.get("username") or "").strip()
+    email = (request.POST.get("email") or "").strip()
+    password = request.POST.get("password") or ""
+    again = request.POST.get("confirm_password") or ""
+    users = get_user_model().objects
+
+    if not username or not email:
+        messages.error(request, "A username and an email address are both needed.")
+    elif users.filter(username__iexact=username).exists():
+        messages.error(request, f"There is already an account called “{username}”.")
+    elif users.filter(email__iexact=email).exists():
+        messages.error(request, f"{email} is already on another account.")
+    elif password != again:
+        messages.error(request, "The two passwords do not match.")
+    else:
+        try:
+            validate_password(password)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            person = users.create_user(
+                username=username,
+                email=email,
+                password=password,
+                is_active=not needs_approval,
+            )
+            if needs_approval:
+                messages.success(
+                    request,
+                    f"Thanks — the account “{person.username}” has been created and is "
+                    "waiting for a manager to approve it. You will be able to sign in "
+                    "once they have.",
+                )
+            else:
+                messages.success(request, "Your account is ready. Sign in below.")
+            return redirect("login")
+
+    return render(request, "registration/register.html", context)
