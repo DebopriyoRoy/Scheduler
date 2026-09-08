@@ -17,9 +17,32 @@
   <div class="alert alert-danger">Square could not be read: {{ error }}</div>
 {% elif report %}
 
+  <form method="get" class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    <label for="date" class="fw-medium mb-0">Show date</label>
+    <input type="date" id="date" name="date" class="form-control" style="max-width:12rem"
+           value="{{ selected_date|date:'Y-m-d' }}"
+           min="{{ schedule_run.start_date|date:'Y-m-d' }}"
+           max="{{ schedule_run.end_date|date:'Y-m-d' }}"
+           onchange="this.form.submit()">
+    {% if selected_date %}
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{% url 'schedule_square_compare' schedule_run.pk %}">Show all dates</a>
+      <span class="badge text-bg-primary-subtle border text-primary-emphasis">
+        showing {{ selected_date|date:"D d M Y" }} only
+      </span>
+    {% endif %}
+  </form>
+  <p class="text-secondary small mb-4">
+    Pick a day from the calendar to see only that night.
+    {% if available_dates %}
+      Shows in this schedule:
+      {% for day in available_dates %}<a href="?date={{ day|date:'Y-m-d' }}" class="text-decoration-none">{{ day|date:"D d M" }}</a>{% if not forloop.last %} &middot; {% endif %}{% endfor %}.
+    {% endif %}
+  </p>
+
   <div class="row g-2 mb-4">
     <div class="col-6 col-md-3"><div class="card border-success h-100"><div class="card-body py-2 px-3">
-      <div class="fs-4 fw-semibold lh-1">{{ report.matched }}</div>
+      <div class="fs-4 fw-semibold lh-1">{{ matched_shown }}</div>
       <div class="small text-muted">identical</div></div></div></div>
     <div class="col-6 col-md-3"><div class="card border-warning h-100"><div class="card-body py-2 px-3">
       <div class="fs-4 fw-semibold lh-1">{{ edited|length }}</div>
@@ -32,17 +55,18 @@
       <div class="small text-muted">removed in Square</div></div></div></div>
   </div>
 
-  {% if report.published_count %}
+  {% if published_shown %}
     <div class="alert alert-info">
-      <strong>{{ report.published_count }} of these shifts are published</strong> &mdash; staff can
+      <strong>{{ published_shown }} of these shifts are published</strong> &mdash; staff can
       see them. The rest are still drafts.
     </div>
   {% endif %}
 
-  {% if not report.has_differences %}
+  {% if not edited and not added and not removed and not unmapped %}
     <div class="alert alert-success mb-0">
-      <strong>They match.</strong> All {{ report.matched }} shifts agree with Square on
-      person, date, job and times.
+      <strong>They match.</strong> All {{ matched_shown }} shift{{ matched_shown|pluralize }}
+      {% if selected_date %}on {{ selected_date|date:"D d M Y" }} agree{% else %}agree{% endif %}
+      with Square on person, date, job and times.
     </div>
   {% else %}
 
