@@ -1884,6 +1884,18 @@ def schedule_square_compare(request, run_id):
     except SquareReadError as exc:
         error = str(exc)
 
+    # Narrow the whole page to one night. The counts follow the filter rather than
+    # staying at period totals, which would otherwise describe dates that are not shown.
+    chosen = (request.GET.get("date") or "").strip()
+    on = None
+    if report and chosen:
+        try:
+            on = date.fromisoformat(chosen)
+        except ValueError:
+            on = None
+        if on is not None and on not in report.dates:
+            messages.info(request, f"Nothing to compare on {on:%a %d %b}.")
+
     return render(
         request,
         "scheduling/schedule_square_compare.html",
@@ -1891,10 +1903,14 @@ def schedule_square_compare(request, run_id):
             "schedule_run": schedule_run,
             "report": report,
             "error": error,
-            "added": report.of_kind("ADDED_IN_SQUARE") if report else [],
-            "removed": report.of_kind("REMOVED_FROM_SQUARE") if report else [],
-            "edited": report.of_kind("EDITED_IN_SQUARE") if report else [],
-            "unmapped": report.of_kind("UNMAPPED") if report else [],
+            "added": report.of_kind("ADDED_IN_SQUARE", on) if report else [],
+            "removed": report.of_kind("REMOVED_FROM_SQUARE", on) if report else [],
+            "edited": report.of_kind("EDITED_IN_SQUARE", on) if report else [],
+            "unmapped": report.of_kind("UNMAPPED", on) if report else [],
+            "matched_shown": report.matched_on(on) if report else 0,
+            "published_shown": report.published_on(on) if report else 0,
+            "available_dates": report.dates if report else [],
+            "selected_date": on,
         },
     )
 

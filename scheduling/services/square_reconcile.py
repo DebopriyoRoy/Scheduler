@@ -72,9 +72,29 @@ class ReconcileReport:
     local_total: int = 0
     published_count: int = 0
     read_at: dt.datetime | None = None
+    # Per-date tallies, so the page can narrow to one night and have its counts mean
+    # that night. Totals alone could only ever describe the whole period.
+    matched_by_date: dict[dt.date, int] = field(default_factory=dict)
+    published_by_date: dict[dt.date, int] = field(default_factory=dict)
 
-    def of_kind(self, kind: str) -> list[ShiftDifference]:
-        return [d for d in self.differences if d.kind == kind]
+    def of_kind(self, kind: str, on: dt.date | None = None) -> list[ShiftDifference]:
+        return [
+            d
+            for d in self.differences
+            if d.kind == kind and (on is None or d.date == on)
+        ]
+
+    def matched_on(self, on: dt.date | None = None) -> int:
+        return self.matched if on is None else self.matched_by_date.get(on, 0)
+
+    def published_on(self, on: dt.date | None = None) -> int:
+        return self.published_count if on is None else self.published_by_date.get(on, 0)
+
+    @property
+    def dates(self) -> list[dt.date]:
+        """Every date this comparison covers, whichever side the shift came from."""
+        seen = set(self.matched_by_date) | {d.date for d in self.differences}
+        return sorted(seen)
 
     @property
     def has_differences(self) -> bool:
@@ -156,12 +176,16 @@ def compare_run_with_square(schedule_run: ScheduleRun) -> ReconcileReport:
         # entire published week as unpublished.
         published = shift.get("published_shift_details")
         details = published or shift.get("draft_shift_details") or {}
-        if published:
-            report.published_count += 1
         started = details.get("start_at", "")
         if not started:
             continue
-        key = (details.get("team_member_id", ""), dt.date.fromisoformat(started[:10]))
+        shift_date = dt.date.fromisoformat(started[:10])
+        if published:
+            report.published_count += 1
+            report.published_by_date[shift_date] = (
+                report.published_by_date.get(shift_date, 0) + 1
+            )
+        key = (details.get("team_member_id", ""), shift_date)
         square_side[key] = {
             "job_id": details.get("job_id", ""),
             "job": job_titles.get(details.get("job_id", ""), "Unknown job"),
@@ -226,6 +250,7 @@ def compare_run_with_square(schedule_run: ScheduleRun) -> ReconcileReport:
             )
             if same:
                 report.matched += 1
+                report.matched_by_date[day] = report.matched_by_date.get(day, 0) + 1
                 continue
             kind = EDITED_IN_SQUARE
         elif remote:
