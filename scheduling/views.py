@@ -3,8 +3,10 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import LoginView
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
@@ -2128,3 +2130,318 @@ def schedule_warnings_accept_all(request, run_id):
         "It can be approved now, and the reason is recorded against each one.",
     )
     return redirect("schedule_detail", run_id=run_id)
+
+
+def password_reset(request):
+    """Ask for a reset link. Deliberately outside @login_required.
+
+    A typo is told it is a typo, and a real account is told which inbox the link went
+    to. That does let someone probe which names exist, and on a public site it would be
+    wrong - but this application is bound to 127.0.0.1 on a single Mac, so anyone who
+    can load this page can already read the database beside it. Trading a real
+    usability win against an attacker who is by definition already inside is not a
+    trade worth making the other way.
+    """
+    from django.conf import settings
+
+    from scheduling.services.password_reset import (
+        build_link,
+        email_link,
+        find_user,
+        write_link_to_disk,
+    )
+
+    context = {
+        "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False),
+        **auth_page_context(),
+    }
+
+    if request.method == "POST":
+        identifier = (request.POST.get("identifier") or "").strip()
+        user = find_user(identifier)
+
+        if user is None:
+            messages.error(
+                request,
+                f"No active account matches “{identifier}”. Check the spelling, or try "
+                "the other of your username and email address.",
+            )
+            return redirect("password_reset")
+
+        link = build_link(user, request)
+        sent, detail = email_link(user, link)
+        if sent:
+            messages.success(request, f"A reset link has been sent to {detail}.")
+            return redirect("password_reset")
+
+        try:
+            path = write_link_to_disk(link)
+        except OSError as exc:
+            messages.error(request, f"The reset link could not be saved ({exc}).")
+            return redirect("password_reset")
+        messages.warning(
+            request,
+            f"{detail} The link was saved to {path} instead - open that file and "
+            f"follow the link inside.",
+        )
+        return redirect("password_reset")
+
+    return render(request, "registration/password_reset.html", context)
+
+
+def password_reset_confirm(request, uidb64, token):
+    """Set the new password, for someone arriving from the link.
+
+    The token is Django's own: tied to the account's current password hash and last
+    login, so it stops working the moment the password changes, and it expires on its
+    own. Checked before the form is even shown, so a dead link says so rather than
+    taking a password and then refusing it.
+    """
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.password_validation import (
+        password_validators_help_texts,
+        validate_password,
+    )
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.encoding import force_str
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        user = get_user_model().objects.get(pk=force_str(urlsafe_base64_decode(uidb64)))
+    except (TypeError, ValueError, OverflowError, get_user_model().DoesNotExist):
+        user = None
+
+    if user is None or not default_token_generator.check_token(user, token):
+        return render(request, "registration/password_reset_invalid.html", status=400)
+
+    context = {
+        "username": user.username,
+        "password_rules": password_validators_help_texts(),
+        **auth_page_context(),
+    }
+
+    if request.method == "POST":
+        new = request.POST.get("new_password") or ""
+        again = request.POST.get("confirm_password") or ""
+        if new != again:
+            messages.error(request, "The two passwords do not match.")
+            return render(request, "registration/password_reset_confirm.html", context)
+        try:
+            validate_password(new, user)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+            return render(request, "registration/password_reset_confirm.html", context)
+
+        user.set_password(new)
+        user.save()
+        messages.success(request, "Your password has been changed. Sign in with it now.")
+        return redirect("login")
+
+    return render(request, "registration/password_reset_confirm.html", context)
+
+
+@login_required
+def management_users(request):
+    """Who can sign in, and how a colleague is given an account.
+
+    There is deliberately no public sign-up. This page is bound to 127.0.0.1 but the
+    accounts it creates reach real staff data and a live Square connection, so an open
+    registration form would let anyone who can load the page mint themselves a manager.
+    Accounts are made here, by someone already signed in.
+
+    The inviter never chooses the password. Handing someone one to "change later" means
+    it gets written down, shared over something, and usually never changed; the link
+    lets them pick their own and means nobody else ever knew it.
+    """
+    from django.contrib.auth import get_user_model
+
+    from scheduling.services.password_reset import build_link, email_invitation
+
+    users = get_user_model().objects.order_by("-is_active", "username")
+
+    if request.method == "POST" and request.POST.get("action") == "invite":
+        username = (request.POST.get("username") or "").strip()
+        email = (request.POST.get("email") or "").strip()
+
+        if not username or not email:
+            messages.error(request, "A username and an email address are both needed.")
+        elif get_user_model().objects.filter(username__iexact=username).exists():
+            messages.error(request, f"There is already an account called “{username}”.")
+        elif get_user_model().objects.filter(email__iexact=email).exists():
+            messages.error(request, f"{email} is already on another account.")
+        else:
+            new_user = get_user_model().objects.create(
+                username=username, email=email, is_staff=False, is_superuser=False
+            )
+            # No password is set at all, so the account cannot be signed into until
+            # its owner follows the link and chooses one.
+            new_user.set_unusable_password()
+            new_user.save()
+
+            link = build_link(new_user, request)
+            sent, detail = email_invitation(new_user, link, request.user.get_username())
+            if sent:
+                messages.success(
+                    request, f"“{username}” has been invited. The link went to {detail}."
+                )
+            else:
+                messages.warning(
+                    request,
+                    f"“{username}” was created, but {detail} Send them this link "
+                    f"yourself - it can be used once: {link}",
+                )
+        return redirect("management_users")
+
+    if request.method == "POST" and request.POST.get("action") == "approve":
+        target = get_user_model().objects.filter(pk=request.POST.get("user_id")).first()
+        if target is None:
+            messages.error(request, "That account no longer exists.")
+        else:
+            target.is_active = True
+            target.save()
+            messages.success(request, f"“{target.username}” can now sign in.")
+        return redirect("management_users")
+
+    if request.method == "POST" and request.POST.get("action") == "reject":
+        target = get_user_model().objects.filter(pk=request.POST.get("user_id")).first()
+        if target is None:
+            messages.error(request, "That account no longer exists.")
+        elif target.last_login is not None:
+            # Only ever removes an account that has never been used. Anything that has
+            # signed in has history worth keeping; that one gets disabled, not deleted.
+            messages.error(
+                request,
+                f"“{target.username}” has signed in before, so it can be disabled but "
+                "not deleted.",
+            )
+        else:
+            name = target.username
+            target.delete()
+            messages.success(request, f"The request from “{name}” has been removed.")
+        return redirect("management_users")
+
+    if request.method == "POST" and request.POST.get("action") == "deactivate":
+        target = get_user_model().objects.filter(pk=request.POST.get("user_id")).first()
+        if target is None:
+            messages.error(request, "That account no longer exists.")
+        elif target.pk == request.user.pk:
+            # Otherwise one careless click locks the last person out of their own app.
+            messages.error(request, "You cannot deactivate the account you are signed in with.")
+        elif get_user_model().objects.filter(is_active=True).count() <= 1:
+            messages.error(request, "This is the only account that can sign in.")
+        else:
+            target.is_active = False
+            target.save()
+            messages.success(request, f"“{target.username}” can no longer sign in.")
+        return redirect("management_users")
+
+    return render(
+        request,
+        "scheduling/management_users.html",
+        {
+            "users": users.filter(is_active=True),
+            "disabled_users": users.filter(is_active=False, last_login__isnull=False),
+            # Never signed in and not yet active: someone who used the sign-up link.
+            "pending_users": users.filter(is_active=False, last_login__isnull=True),
+            "email_configured": getattr(settings, "EMAIL_IS_CONFIGURED", False),
+            "registration_open": not getattr(
+                settings, "REGISTRATION_REQUIRES_APPROVAL", True
+            ),
+        },
+    )
+
+
+def register(request):
+    """Create an account. Outside @login_required - that is the whole point.
+
+    New accounts are held inactive until a manager approves them, unless
+    REGISTRATION_REQUIRES_APPROVAL is turned off. The link is public and this
+    application reaches staff records and a live Square connection, so "anyone who can
+    load the page gets in" is not a default worth shipping - but it is one setting away
+    for whoever wants it.
+
+    The person chooses their own password here, validated by Django's own rules.
+    """
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.password_validation import (
+        password_validators_help_texts,
+        validate_password,
+    )
+
+    needs_approval = getattr(settings, "REGISTRATION_REQUIRES_APPROVAL", True)
+    context = {
+        "password_rules": password_validators_help_texts(),
+        "needs_approval": needs_approval,
+        **auth_page_context(),
+    }
+
+    if request.method != "POST":
+        return render(request, "registration/register.html", context)
+
+    username = (request.POST.get("username") or "").strip()
+    email = (request.POST.get("email") or "").strip()
+    password = request.POST.get("password") or ""
+    again = request.POST.get("confirm_password") or ""
+    users = get_user_model().objects
+
+    if not username or not email:
+        messages.error(request, "A username and an email address are both needed.")
+    elif users.filter(username__iexact=username).exists():
+        messages.error(request, f"There is already an account called “{username}”.")
+    elif users.filter(email__iexact=email).exists():
+        messages.error(request, f"{email} is already on another account.")
+    elif password != again:
+        messages.error(request, "The two passwords do not match.")
+    else:
+        try:
+            validate_password(password)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            person = users.create_user(
+                username=username,
+                email=email,
+                password=password,
+                is_active=not needs_approval,
+            )
+            if needs_approval:
+                messages.success(
+                    request,
+                    f"Thanks — the account “{person.username}” has been created and is "
+                    "waiting for a manager to approve it. You will be able to sign in "
+                    "once they have.",
+                )
+            else:
+                messages.success(request, "Your account is ready. Sign in below.")
+            return redirect("login")
+
+    return render(request, "registration/register.html", context)
+
+
+def auth_page_context() -> dict:
+    """Shared by every signed-out page: what is on next.
+
+    Public billing only. Private bookings and unconfirmed Christmas placeholders are
+    excluded because this panel is visible before anyone signs in, and a private
+    wedding is not something to advertise on a login screen.
+    """
+    from scheduling.models import Show
+
+    show = (
+        Show.objects.filter(active=True, date__gte=date.today())
+        .exclude(title__icontains="private")
+        .exclude(title__icontains="waitlist")
+        .exclude(title__icontains="tbd")
+        .order_by("date", "start_time")
+        .first()
+    )
+    return {"next_show": show}
+
+
+class SpiritLoginView(LoginView):
+    """The stock login view, with the billing the panel shows."""
+
+    template_name = "registration/login.html"
+
+    def get_context_data(self, **kwargs):
+        return {**super().get_context_data(**kwargs), **auth_page_context()}

@@ -45,7 +45,12 @@ codesign --verify --deep --strict "dist/Spirit Scheduler.app" 2>/dev/null \
 echo "4. Building disk image"
 DMG="dist/Spirit Scheduler.dmg"
 rm -f "$DMG"
-STAGE="$(mktemp -d)"
+# Staged beside the build output rather than in mktemp's directory. hdiutil fails
+# with "Resource busy" reading a source folder under /var/folders on this macOS -
+# reproducibly, with nothing holding the files and no image mounted - so the disk
+# image step failed while the .app beside it had built perfectly.
+STAGE="$REPO/build/dmg-stage"
+rm -rf "$STAGE"; mkdir -p "$STAGE"
 cp -R "dist/Spirit Scheduler.app" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 cp "$REPO/packaging/READ-ME-FIRST.txt" "$STAGE/READ ME FIRST.txt"
