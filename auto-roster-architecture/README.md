@@ -144,6 +144,23 @@ flowchart LR
 | 5 | Publish approved roster via Labor API (draft → bulk publish) | Production write only after approval in step 6 |
 | Later | Spirit self-service availability form, or official Square endpoint | Provider swapped, no engine changes |
 
+## Build status
+
+**Phase 1 — built** (branch `auto-roster-phase-1`):
+
+| Piece | Where |
+|---|---|
+| Manual change layer (`AvailabilityOverride`): add/remove per date, reason required, who/when kept, never touched by a Square refresh | `scheduling/models.py`, `scheduling/services/overrides.py` |
+| Overrides applied in availability, eligibility and the "missing availability" count | `services/availability.py`, `services/eligibility.py`, `services/engine.py` |
+| Conflict handling: time off approved after an addition blocks until someone picks *Keep my change* or *Use Square's* | `services/overrides.py`, roster step 4 |
+| Step 3 rule selection by show type (workshop, offsite, under 75, private, Dwight's, regular evening, own timetable) — engine now asks this one function, behaviour unchanged | `services/show_profiles.py` |
+| Freshness gate: Square availability older than 24 h blocks a build unless deliberately overridden (noted on the run) | `services/freshness.py` |
+| Screens: **Schedules → Build a roster for one show** (steps 1–3) and **Who's available** (step 4), handing over to the existing review page (5–6) and Square draft sync (7) | `scheduling/roster_views.py`, `templates/scheduling/roster_*.html` |
+
+Not yet: the network-capture reader (needs a signed-in Square session to record what the
+dashboard loads — Phase 0 spike), Back Office guest-count pre-fill, nightly schedule, and
+one-click publish (the app still sends drafts only, by design).
+
 ## 6. Open decisions
 
 - Should staff keep entering availability in the Square Team app, or move to a Spirit form (Option D)?

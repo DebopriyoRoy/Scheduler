@@ -1319,3 +1319,110 @@ class EmployeeTimeOff(models.Model):
         if self.is_whole_day or shift_start is None or shift_end is None:
             return True
         return self.start_time < shift_end and self.end_time > shift_start
+
+
+class OverrideAction(models.TextChoices):
+    ADD = "ADD", "Add availability"
+    REMOVE = "REMOVE", "Mark unavailable"
+
+
+class AvailabilityOverride(models.Model):
+    """A manager's own word on whether someone can work a date, laid over Square.
+
+    Square holds availability and time off, and a refresh replaces everything it wrote.
+    The things it does not know yet - a swap agreed at the bar, a call-in, a training
+    day - used to be typed in as ordinary availability rows, which could only ever add:
+    a hand-entered "unavailable" lost to Square's "all day" because the reader takes the
+    union. These live in their own table, which no sync touches, and take precedence:
+
+        effective = (Square - removals) + additions
+
+    One active override per person and date, so there is never a question of which one
+    applies. Recording a new one retires the old one rather than deleting it, and every
+    one carries who made it and why: the reason is what the audit trail keeps.
+    """
+
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE, related_name="availability_overrides"
+    )
+    date = models.DateField(db_index=True)
+    action = models.CharField(max_length=10, choices=OverrideAction.choices)
+    # An addition may be a window; null on both means all day. A removal is always the
+    # whole day - "off for the evening" is time off, which already has a home.
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    reason = models.CharField(max_length=300)
+
+    # What Square said when this was recorded. A conflict is Square changing its mind
+    # afterwards, not Square disagreeing at the time - disagreeing at the time is the
+    # whole point of an override.
+    square_state_at_creation = models.CharField(max_length=120, blank=True)
+    time_off_at_creation = models.BooleanField(default=False)
+
+    active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="availability_overrides_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # "Keep my change" on a conflict: the override then wins over the newer time off.
+    conflict_kept_at = models.DateTimeField(null=True, blank=True)
+    conflict_kept_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="availability_overrides_kept",
+    )
+
+    retired_at = models.DateTimeField(null=True, blank=True)
+    retired_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="availability_overrides_retired",
+    )
+    retired_reason = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        ordering = ("-date", "employee__display_name", "-created_at")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "date"],
+                condition=models.Q(active=True),
+                name="one_active_override_per_employee_date",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee.display_name} {self.date:%Y-%m-%d}: {self.describe()}"
+
+    def clean(self) -> None:
+        super().clean()
+        if len((self.reason or "").strip()) < 5:
+            raise ValidationError({"reason": "Give a reason of at least a few words."})
+        if self.action == OverrideAction.REMOVE and (self.start_time or self.end_time):
+            raise ValidationError(
+                "Marking someone unavailable covers the whole day. For part of a day, "
+                "record time off instead."
+            )
+        if (self.start_time is None) != (self.end_time is None):
+            raise ValidationError("Give both a start and an end time, or neither for all day.")
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValidationError({"end_time": "The end time must be after the start time."})
+
+    @property
+    def is_all_day(self) -> bool:
+        return self.start_time is None and self.end_time is None
+
+    def describe(self) -> str:
+        if self.action == OverrideAction.REMOVE:
+            return "Marked unavailable"
+        if self.is_all_day:
+            return "Added available all day"
+        return f"Added {self.start_time:%H:%M}–{self.end_time:%H:%M}"

@@ -20,6 +20,7 @@ from scheduling.models import (
     TimeOffStatus,
 )
 from scheduling.services.availability import AvailabilityProvider, LocalAvailabilityProvider
+from scheduling.services.overrides import supersedes_time_off
 
 MANAGER_ROLE_NAME = "Server Manager"
 
@@ -136,6 +137,11 @@ class EligibilityService:
             start_date__lte=show.date,
             end_date__gte=show.date,
         )
+        # A manager's addition for this date overrules the time off only when it was
+        # made knowing about it, or a conflict was settled in its favour. Time off
+        # approved after the addition still blocks until somebody decides.
+        if supersedes_time_off(employee, show.date):
+            time_off = time_off.none()
         for absence in time_off:
             if absence.covers(show.date, shift_start_time, shift_end_time):
                 window = (

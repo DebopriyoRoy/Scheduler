@@ -10,7 +10,10 @@
       as drafts &mdash; publishing them to staff is always a manual step in Square.
     </p>
   </div>
-  <a class="btn btn-primary" href="{% url 'schedule_generate' %}">Generate Schedule</a>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'schedule_generate' %}">Generate for a date range</a>
+    <a class="btn btn-primary" href="{% url 'roster_new' %}">Build a roster for one show</a>
+  </div>
 </div>
 
 {% for section in sections %}

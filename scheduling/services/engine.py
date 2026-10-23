@@ -12,6 +12,7 @@ from scheduling.models import (
     MINIMUM_CONFIRMED_SERVERS,
     MINIMUM_VIABLE_GUESTS,
     AssignmentType,
+    AvailabilityOverride,
     AvailabilityType,
     Employee,
     EmployeeAvailability,
@@ -46,6 +47,7 @@ from scheduling.services.requirements import (
     templates_for_requirement,
 )
 from scheduling.services.rotations import FiftyFiftyRotation, generate_office_assignments
+from scheduling.services.show_profiles import ProfileKey, profile_for
 
 LOCAL_TIMEZONE = ZoneInfo("America/St_Johns")
 
@@ -361,10 +363,13 @@ class SchedulingEngine:
         for show in shows:
             self._create_input_warnings(schedule_run, show)
 
+            # Which treatment this show gets is decided in one place, so the roster
+            # screens can say so before a run exists. The order there is the order here.
+            profile = profile_for(show)
+
             # Workshops (e.g. the Ugly Stick Workshop) are a class, not a dinner-theatre
             # show, and never receive floor/bar staffing.
-            is_workshop = "workshop" in show.title.lower()
-            if is_workshop:
+            if profile.key == ProfileKey.WORKSHOP:
                 self._warning(
                     schedule_run,
                     show,
@@ -376,8 +381,7 @@ class SchedulingEngine:
                 continue
 
             # Section 10: Critical Offsite Rule
-            is_offsite = "offsite" in show.title.lower() or "offsite" in show.venue.lower()
-            if is_offsite:
+            if profile.key == ProfileKey.OFFSITE:
                 self._warning(
                     schedule_run,
                     show,
@@ -392,7 +396,7 @@ class SchedulingEngine:
             # cancels it or moves those guests onto another date. Staffing it would
             # book crew for a night that will not happen, so the engine flags the
             # decision and leaves the show unstaffed.
-            if show.planning_guest_count < MINIMUM_VIABLE_GUESTS:
+            if profile.key == ProfileKey.BELOW_MINIMUM:
                 self._warning(
                     schedule_run,
                     show,
@@ -404,8 +408,7 @@ class SchedulingEngine:
                 )
                 continue
 
-            is_private = "private" in show.title.lower() and not is_offsite
-            if is_private:
+            if profile.key == ProfileKey.PRIVATE:
                 self._warning(
                     schedule_run,
                     show,
@@ -562,11 +565,22 @@ class SchedulingEngine:
             for employee in employees
             if employee.display_name.strip().casefold() not in EXCLUDED_MANAGER_NAMES
         ]
-        known = EmployeeAvailability.objects.filter(
-            employee__in=employees,
-            date__in=dates,
-        ).exclude(availability_type=AvailabilityType.UNKNOWN)
-        return len(employees) * len(dates) - known.count()
+        # Distinct (employee, date) pairs: two windows on one day are one known date,
+        # and a manual override makes a date known whatever Square holds for it.
+        known = set(
+            EmployeeAvailability.objects.filter(
+                employee__in=employees,
+                date__in=dates,
+            )
+            .exclude(availability_type=AvailabilityType.UNKNOWN)
+            .values_list("employee_id", "date")
+        )
+        known |= set(
+            AvailabilityOverride.objects.filter(
+                employee__in=employees, date__in=dates, active=True
+            ).values_list("employee_id", "date")
+        )
+        return len(employees) * len(dates) - len(known)
 
     @staticmethod
     def _requirement_order(requirement: StaffingRequirement) -> int:

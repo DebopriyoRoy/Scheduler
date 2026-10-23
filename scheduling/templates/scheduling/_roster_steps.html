@@ -1,0 +1,5 @@
+<ol class="roster-steps" aria-label="Progress">
+  {% for step in steps %}
+    <li class="{{ step.state }}"{% if step.state == "now" %} aria-current="step"{% endif %}><span class="n">{{ step.number }}</span>{{ step.label }}</li>
+  {% endfor %}
+</ol>
