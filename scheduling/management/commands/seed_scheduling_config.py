@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from scheduling.models import AssignmentType, Role, ShiftTemplate, StaffingRule
+from scheduling.services.staffing_rules import install_defaults
 
 SHIFT_TEMPLATES = (
     # The Server Manager oversees the floor from mid-afternoon. One per show, ahead of
@@ -219,6 +220,10 @@ class Command(BaseCommand):
                     },
                 )
                 rule_count += 1
+        # The editable rules and call times. Fills gaps only: a re-seed never undoes
+        # what management set on the Staffing rules page.
+        install_defaults()
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"Scheduling configuration ready: {len(SHIFT_TEMPLATES)} shift templates, "

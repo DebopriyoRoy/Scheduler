@@ -1,14 +1,11 @@
 from dataclasses import dataclass
 
 from scheduling.models import (
-    GUESTS_PER_BARTENDER,
-    GUESTS_PER_BUSSER,
-    GUESTS_PER_SERVER,
     AssignmentType,
     ShiftTemplate,
     Show,
-    staff_for_guests,
 )
+from scheduling.services.staffing_rules import needs_for_guests
 
 
 @dataclass(frozen=True)
@@ -18,56 +15,27 @@ class StaffingRequirement:
     on_call_count: int
 
 
-def on_call_servers_for(confirmed: int) -> int:
-    """Standby floor cover. One is the standing cushion; a full house wants more."""
-    if confirmed >= 7:
-        return 3
-    if confirmed >= 5:
-        return 2
-    return 1
-
-
-def on_call_bartenders_for(confirmed: int) -> int:
-    """Standby bar cover, behind the confirmed bartenders already rostered."""
-    return 2 if confirmed >= 3 else 1
-
-
 def staffing_requirements_for(show: Show) -> tuple[list[StaffingRequirement], bool]:
-    """How many of each role this show needs, from the guest count.
+    """How many of each role this show needs, from its guest count and the live rules.
 
-    Counts are calculated from the coverage ratios rather than looked up in bands:
-    one server per 25 guests, one bartender per 75, one busser per 100, each block
-    stretching five guests further before another person is added. Bands could not
-    express that tolerance without a row for every five-guest step, and the ratio is
-    the rule management actually apply.
+    The rules are management's, edited on the Staffing rules page: a minimum per role,
+    one more person per so many guests (each person stretching a few guests further
+    before another is added), an optional maximum, and on-call cover that grows with
+    the confirmed crew. At 75-80 guests the defaults give the standard crew: 3 servers
+    + 1 on call, 1 bartender + 1 on call, 1 busser, 1 50/50 and the Server Manager.
+
+    The Server Manager and the 50/50 are part of every show's crew, not extras: the
+    50/50 used to hang off Show.requires_50_50, which the calendar import never set,
+    and 95 of 96 real shows went without one.
 
     The second return value reports a guest count beyond the venue's capacity, which
     is a data problem worth surfacing rather than silently staffing.
     """
     guests = show.planning_guest_count
-
-    servers = staff_for_guests(guests, GUESTS_PER_SERVER)
-    bartenders = staff_for_guests(guests, GUESTS_PER_BARTENDER)
-    bussers = staff_for_guests(guests, GUESTS_PER_BUSSER)
-
-    # The 50/50 is part of the standard crew, not an extra somebody opts into. It was
-    # gated on Show.requires_50_50, which defaults to False and which the calendar
-    # import never sets - so every show pulled from the live calendar arrived without
-    # one and the role went unstaffed across the entire roster (95 of 96 active shows).
-    # The rule belongs here, beside the rest of the crew, not in a per-show flag that
-    # nothing maintains.
     requirements = [
-        # One Server Manager on every show, in from mid-afternoon. Whether anyone can
-        # actually take it is the engine's problem: if the manager is on approved time
-        # off it reports a shortage like any other position, rather than pretending the
-        # show does not need one.
-        StaffingRequirement("Server Manager", 1, 0),
-        StaffingRequirement("Server", servers, on_call_servers_for(servers)),
-        StaffingRequirement("Bartender", bartenders, on_call_bartenders_for(bartenders)),
-        StaffingRequirement("Busser", bussers, 0),
-        StaffingRequirement("50/50", 1, 0),
+        StaffingRequirement(need.role_name, need.confirmed_count, need.on_call_count)
+        for need in needs_for_guests(guests)
     ]
-
     return requirements, guests > show.capacity
 
 

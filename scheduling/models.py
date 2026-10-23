@@ -1426,3 +1426,148 @@ class AvailabilityOverride(models.Model):
         if self.is_all_day:
             return "Added available all day"
         return f"Added {self.start_time:%H:%M}–{self.end_time:%H:%M}"
+
+
+def parse_on_call_steps(text: str) -> list[int]:
+    """'5, 7' -> [5, 7]. Raises ValueError on anything that is not rising whole numbers."""
+    steps = [int(part) for part in (text or "").replace(";", ",").split(",") if part.strip()]
+    if any(step < 1 for step in steps) or steps != sorted(set(steps)):
+        raise ValueError("Use whole numbers in rising order, e.g. 5, 7")
+    return steps
+
+
+class RoleStaffingRule(models.Model):
+    """How many of one role a show needs, as a function of its guest count.
+
+    Management edit these on the Staffing rules page. The engine reads them every time
+    it builds a roster, so a change applies to the next roster built - never to one
+    already approved or sent to Square.
+    """
+
+    role = models.OneToOneField(Role, on_delete=models.CASCADE, related_name="staffing_rule")
+    minimum_confirmed = models.PositiveSmallIntegerField(
+        default=1, help_text="Never fewer than this on a show that runs."
+    )
+    guests_per_person = models.PositiveSmallIntegerField(
+        default=0, help_text="One more person per this many guests. 0 keeps the crew fixed."
+    )
+    stretch_guests = models.PositiveSmallIntegerField(
+        default=5,
+        help_text="Guests a person can stretch to cover before another is added.",
+    )
+    maximum_confirmed = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Never more than this. Empty for no limit."
+    )
+    on_call_base = models.PositiveSmallIntegerField(
+        default=0, help_text="On-call cover on every show."
+    )
+    on_call_steps = models.CharField(
+        max_length=60,
+        blank=True,
+        help_text="Add one more on call when the confirmed count reaches each of these.",
+    )
+    display_order = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="staffing_rules_updated",
+    )
+
+    class Meta:
+        ordering = ("display_order", "role__name")
+
+    def __str__(self) -> str:
+        return f"{self.role.name} staffing rule"
+
+    def clean(self) -> None:
+        super().clean()
+        errors = {}
+        if self.guests_per_person and self.stretch_guests >= self.guests_per_person:
+            errors["stretch_guests"] = "The stretch must be smaller than the guests per person."
+        if (
+            self.maximum_confirmed is not None
+            and self.maximum_confirmed < self.minimum_confirmed
+        ):
+            errors["maximum_confirmed"] = "The maximum can't be below the minimum."
+        try:
+            parse_on_call_steps(self.on_call_steps)
+        except ValueError as exc:
+            errors["on_call_steps"] = str(exc)
+        if errors:
+            raise ValidationError(errors)
+
+    def confirmed_for(self, guests: int) -> int:
+        count = self.minimum_confirmed
+        if self.guests_per_person and guests > 0:
+            per = self.guests_per_person
+            count = max(count, -(-(guests - self.stretch_guests) // per))
+        if self.maximum_confirmed is not None:
+            count = min(count, self.maximum_confirmed)
+        return count
+
+    def on_call_for(self, confirmed: int) -> int:
+        steps = parse_on_call_steps(self.on_call_steps)
+        return self.on_call_base + sum(1 for step in steps if confirmed >= step)
+
+
+class Timetable(models.TextChoices):
+    REGULAR = "REGULAR", "Shows with doors at 6:30 pm"
+    DWIGHTS = "DWIGHTS", "Dwight’s Wedding"
+
+
+class CallTime(models.Model):
+    """When one position comes in and goes home, on one timetable. Edited by management."""
+
+    timetable = models.CharField(max_length=20, choices=Timetable.choices)
+    shift_template = models.ForeignKey(
+        ShiftTemplate, on_delete=models.CASCADE, related_name="call_times"
+    )
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="call_times_updated",
+    )
+
+    class Meta:
+        ordering = ("timetable", "shift_template__position_order")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["timetable", "shift_template"], name="one_call_time_per_position"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_timetable_display()}: {self.shift_template.name}"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.start_time == self.end_time:
+            raise ValidationError({"end_time": "The finish time must differ from the start."})
+
+
+class StaffingRuleChange(models.Model):
+    """One line per save on the Staffing rules page: who changed what, and when."""
+
+    changed_at = models.DateTimeField(auto_now_add=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="staffing_rule_changes",
+    )
+    summary = models.TextField()
+
+    class Meta:
+        ordering = ("-changed_at",)
+
+    def __str__(self) -> str:
+        return self.summary[:80]

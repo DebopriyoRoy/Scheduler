@@ -157,6 +157,16 @@ flowchart LR
 | Freshness gate: Square availability older than 24 h blocks a build unless deliberately overridden (noted on the run) | `services/freshness.py` |
 | Screens: **Schedules → Build a roster for one show** (steps 1–3) and **Who's available** (step 4), handing over to the existing review page (5–6) and Square draft sync (7) | `scheduling/roster_views.py`, `templates/scheduling/roster_*.html` |
 
+**Phase 1b — editable rules** (same branch):
+
+| Piece | Where |
+|---|---|
+| Crew size per role stored in the database: minimum, one per N guests, stretch, maximum, on-call base and steps. Defaults reproduce the standard 75–80 crew (3+1 servers, 1+1 bartenders, 1 busser, 1 50/50, Server Manager) and grow with the guest count | `RoleStaffingRule`, `services/staffing_rules.py` |
+| Call times per position for 6:30 pm shows and Dwight's stored in the database, with management's October 2026 changes (busser 18:30, bartender off 21:30, on-call bartender off 23:00) | `CallTime`, `staffing_defaults.py` |
+| **Rules** page: edit both, see the crew for every guest count, try a guest count, reset to defaults, change log | `rules_views.py`, `templates/scheduling/staffing_rules.html` |
+| Positions created automatically when the rules ask for more (Server 8, Bartender 4…), copying the last one's times | `ensure_positions()` |
+| Roster review table shows positions beyond the standard nine ("More crew") | `views._schedule_rows`, `schedule_detail.html` |
+
 Not yet: the network-capture reader (needs a signed-in Square session to record what the
 dashboard loads — Phase 0 spike), Back Office guest-count pre-fill, nightly schedule, and
 one-click publish (the app still sends drafts only, by design).

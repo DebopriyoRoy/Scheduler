@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count
 
+from scheduling import staffing_defaults
 from scheduling.models import (
     DEFAULT_EXPECTED_GUESTS,
     MINIMUM_CONFIRMED_SERVERS,
@@ -25,6 +26,7 @@ from scheduling.models import (
     SchedulingWarning,
     ShiftTemplate,
     Show,
+    Timetable,
     WarningSeverity,
     WarningType,
 )
@@ -48,6 +50,7 @@ from scheduling.services.requirements import (
 )
 from scheduling.services.rotations import FiftyFiftyRotation, generate_office_assignments
 from scheduling.services.show_profiles import ProfileKey, profile_for
+from scheduling.services.staffing_rules import call_time_for, ensure_positions
 
 LOCAL_TIMEZONE = ZoneInfo("America/St_Johns")
 
@@ -128,44 +131,26 @@ class Candidate:
 # evening. It is matched on title rather than start time, because the calendar records
 # some Dwight's dates against the curtain (18:30) and some against the doors (18:00);
 # the title is the thing that reliably says which timetable applies.
-STANDARD_EVENING_WINDOWS = {
-    "server-manager": (time(14, 0), time(21, 0)),
-    "lead-server": (time(15, 0), time(21, 0)),
-    "server-2": (time(16, 0), time(21, 30)),
-    "server-3": (time(17, 30), time(23, 0)),
-    "on-call-server": (time(18, 15), time(23, 0)),
-    "busser": (time(18, 45), time(23, 0)),
-    "fifty-fifty": (time(17, 45), time(20, 30)),
-    "bartender": (time(16, 0), time(23, 0)),
-    "on-call-bartender": (time(17, 30), time(22, 30)),
-}
+# Management's own call times, by timetable, now live in the database (CallTime) and
+# are edited on the Staffing rules page. These are the starting values, kept for code
+# that wants to read the defaults, and as the fallback for a position with no row.
+#
+# Dwight's Wedding runs to its own timetable - doors 6:00pm, Act I 6:30pm, dinner
+# 7:30pm. It is matched on title rather than start time, because the calendar records
+# some Dwight's dates against the curtain (18:30) and some against the doors (18:00);
+# the title is the thing that reliably says which timetable applies.
+def _default_windows(timetable: str) -> dict[str, tuple[time, time]]:
+    return {
+        code: (
+            datetime.strptime(start, "%H:%M").time(),
+            datetime.strptime(end, "%H:%M").time(),
+        )
+        for code, (start, end) in staffing_defaults.CALL_TIMES[timetable].items()
+    }
 
-DWIGHTS_WEDDING_WINDOWS = {
-    "server-manager": (time(14, 0), time(21, 0)),
-    "lead-server": (time(15, 0), time(21, 0)),
-    "server-2": (time(15, 30), time(21, 30)),
-    "server-3": (time(17, 0), time(22, 30)),
-    "on-call-server": (time(19, 0), time(22, 30)),
-    "busser": (time(19, 15), time(23, 0)),
-    "fifty-fifty": (time(17, 30), time(20, 30)),
-    "bartender": (time(16, 0), time(22, 30)),
-    "on-call-bartender": (time(17, 0), time(22, 30)),
-}
 
-# A big night adds Server 4-6 and Bartender 2-3. They were given no call times of their
-# own, so they take the last-in position's: Server 3 for extra servers, Bartender 1 for
-# extra bartenders. Leaving them on the old derived offsets would put one crew on two
-# different clocks for the same show.
-WINDOW_ALIASES = {
-    "server-4": "server-3",
-    "server-5": "server-3",
-    "server-6": "server-3",
-    "on-call-server-2": "on-call-server",
-    "on-call-server-3": "on-call-server",
-    "bartender-2": "bartender",
-    "bartender-3": "bartender",
-    "on-call-bartender-2": "on-call-bartender",
-}
+STANDARD_EVENING_WINDOWS = _default_windows(staffing_defaults.REGULAR)
+DWIGHTS_WEDDING_WINDOWS = _default_windows(staffing_defaults.DWIGHTS)
 
 # How far back the allocator looks when working out who has already had hours.
 # Four weeks: long enough to even out a month's roster, short enough that someone
@@ -201,12 +186,15 @@ def is_standard_evening_show(show: Show) -> bool:
 
 
 def call_times_for(show: Show, template_code: str) -> tuple[time, time] | None:
-    """The clock times management calls this position in for, or None to derive them."""
-    code = WINDOW_ALIASES.get(template_code, template_code)
+    """The clock times management calls this position in for, or None to derive them.
+
+    Read from the Staffing rules page's call times, so a change there applies to the
+    next roster built.
+    """
     if is_dwights_wedding(show):
-        return DWIGHTS_WEDDING_WINDOWS.get(code)
+        return call_time_for(Timetable.DWIGHTS, template_code)
     if is_standard_evening_show(show):
-        return STANDARD_EVENING_WINDOWS.get(code)
+        return call_time_for(Timetable.REGULAR, template_code)
     return None
 
 
@@ -313,6 +301,10 @@ class SchedulingEngine:
                 date__range=(start_date, end_date),
             ).order_by("date", "start_time", "pk")
         )
+        # The rules may call for more of a role than there are positions - a seventh
+        # server on a full house after a rule change. Create them before planning.
+        if shows:
+            ensure_positions(max(show.planning_guest_count for show in shows))
         missing_count = self._missing_availability_count(shows)
         if missing_count and not allow_shortages:
             raise IncompleteAvailabilityError(

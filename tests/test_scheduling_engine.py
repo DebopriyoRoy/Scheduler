@@ -1032,9 +1032,11 @@ STANDARD_EVENING_EXPECTED = {
     "server-2": (time(16, 0), time(21, 30)),
     "server-3": (time(17, 30), time(23, 0)),
     "on-call-server": (time(18, 15), time(23, 0)),
-    "busser": (time(18, 45), time(23, 0)),
-    "bartender": (time(16, 0), time(23, 0)),
-    "on-call-bartender": (time(17, 30), time(22, 30)),
+    # Management's October 2026 changes: busser in at 6:30, bartender off at 9:30,
+    # on-call bartender off at 11.
+    "busser": (time(18, 30), time(23, 0)),
+    "bartender": (time(16, 0), time(21, 30)),
+    "on-call-bartender": (time(17, 30), time(23, 0)),
 }
 
 DWIGHTS_EXPECTED = {

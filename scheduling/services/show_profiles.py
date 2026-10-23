@@ -12,13 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from scheduling.models import (
-    GUESTS_PER_BARTENDER,
-    GUESTS_PER_BUSSER,
-    GUESTS_PER_SERVER,
-    MINIMUM_VIABLE_GUESTS,
-    Show,
-)
+from scheduling.models import MINIMUM_VIABLE_GUESTS, Show
+from scheduling.services.staffing_rules import rules_summary
 
 
 class ProfileKey:
@@ -29,13 +24,6 @@ class ProfileKey:
     DWIGHTS = "dwights"
     REGULAR_EVENING = "regular_evening"
     OWN_TIMES = "own_times"
-
-
-RATIO_LADDER = (
-    f"One server per {GUESTS_PER_SERVER} guests, one bartender per {GUESTS_PER_BARTENDER}, "
-    f"one busser per {GUESTS_PER_BUSSER}, each stretching five guests before another is "
-    "added; one Server Manager and one 50/50 on every show."
-)
 
 
 @dataclass(frozen=True)
@@ -114,17 +102,17 @@ def profile_for(show: Show) -> ShowProfile:
             ProfileKey.PRIVATE,
             "Private event — standard theatre staffing",
             True,
-            RATIO_LADDER,
+            rules_summary(),
             timetable,
         )
     if is_dwights_wedding(show):
         return ShowProfile(
-            ProfileKey.DWIGHTS, "Dwight’s Wedding", True, RATIO_LADDER, timetable
+            ProfileKey.DWIGHTS, "Dwight’s Wedding", True, rules_summary(), timetable
         )
     if is_standard_evening_show(show):
         return ShowProfile(
-            ProfileKey.REGULAR_EVENING, "Regular evening show", True, RATIO_LADDER, timetable
+            ProfileKey.REGULAR_EVENING, "Regular evening show", True, rules_summary(), timetable
         )
     return ShowProfile(
-        ProfileKey.OWN_TIMES, "Show on its own timetable", True, RATIO_LADDER, timetable
+        ProfileKey.OWN_TIMES, "Show on its own timetable", True, rules_summary(), timetable
     )

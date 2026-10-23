@@ -1,5 +1,9 @@
 # Shift times, by show type
 
+> **These are now edited in the app**, under **Rules** (the Staffing rules page). The
+> tables below are the starting values (`scheduling/staffing_defaults.py`), which
+> "Reset to Spirit defaults" restores.
+
 Every position's clock times come from one of three places, checked in this order.
 Source: `scheduling/services/engine.py`.
 
@@ -30,14 +34,17 @@ title is the thing that reliably says which timetable applies.
 | Position | In | Out |
 |---|---|---|
 | Server Manager | 14:00 | 21:00 |
-| Lead Server | 15:00 | 21:00 |
+| Server 1 (lead) | 15:00 | 21:00 |
 | Server 2 | 16:00 | 21:30 |
-| Bartender | 16:00 | 23:00 |
-| On-call Bartender | 17:30 | 22:30 |
+| Bartender 1 | 16:00 | 21:30 |
 | Server 3 | 17:30 | 23:00 |
+| On-call Bartender | 17:30 | 23:00 |
+| 50/50 | 17:45 | 20:30 |
 | On-call Server | 18:15 | 23:00 |
-| **50/50** | **18:30** | **21:30** |
-| Busser | 18:45 | 23:00 |
+| Busser | 18:30 | 23:00 |
+
+Changed October 2026 by management: busser in at 18:30 (was 18:45), bartender off at
+21:30 (was 23:00), on-call bartender off at 23:00 (was 22:30).
 
 ## Dwight's Wedding — doors 6:00pm, Act I 6:30, dinner 7:30
 

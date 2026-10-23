@@ -1,0 +1,144 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Staffing rules | Spirit Scheduling Agent{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Configuration</p>
+    <h1 class="h2 mb-1">Staffing rules</h1>
+    <p class="text-secondary mb-0" style="max-width: 70ch">How many people each show needs as the guest count changes, and when each position comes in. Changes apply to the next roster you build &mdash; rosters already approved or sent to Square stay as they are.</p>
+  </div>
+  <details class="text-end">
+    <summary class="btn btn-sm btn-outline-secondary">Reset to Spirit defaults</summary>
+    <form method="post" class="card mt-2 text-start" style="max-width: 22rem; position: absolute; right: 1rem; z-index: 5">{% csrf_token %}
+      <div class="card-body">
+        <p class="small mb-2">Puts every crew rule and call time back to the standard values: 3 + 1 servers, 1 + 1 bartenders, 1 busser, 1 50/50 at 75&ndash;80 guests, and the house call times. It&rsquo;s logged below.</p>
+        <input type="hidden" name="action" value="reset">
+        <button class="btn btn-sm btn-danger" type="submit">Yes, reset everything</button>
+      </div>
+    </form>
+  </details>
+</div>
+
+<section class="card mb-4" id="crew" aria-labelledby="h-crew"><div class="card-body">
+  <h2 class="h5 mb-1" id="h-crew">Crew size by role</h2>
+  <p class="text-secondary small mb-3">
+    Confirmed people = the larger of the <strong>minimum</strong> and one per <strong>guests per person</strong>, where each person can <strong>stretch</strong> to cover a few extra guests before another is added &mdash; never above the <strong>maximum</strong>. Set guests per person to 0 for a fixed crew.
+    On-call cover starts at <strong>on call</strong> and adds one more each time the confirmed count reaches a number in <strong>extra on call at</strong>.
+  </p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="rules">
+    {{ rule_formset.management_form }}
+    {% if rule_formset.non_form_errors %}<div class="alert alert-danger py-2">{{ rule_formset.non_form_errors|join:" " }}</div>{% endif %}
+    <div class="table-responsive"><table class="table align-top mb-3" style="min-width: 980px">
+      <thead><tr>
+        <th scope="col">Role</th><th scope="col">Minimum</th><th scope="col">Guests per person</th><th scope="col">Stretch</th><th scope="col">Maximum</th><th scope="col">On call</th><th scope="col">Extra on call at</th><th scope="col">In words</th>
+      </tr></thead>
+      <tbody>
+        {% for row in rule_rows %}
+          {% with form=row.form %}
+          <tr{% if form.errors %} class="table-danger"{% endif %}>
+            <td class="fw-semibold">{{ form.id }}{{ row.role }}</td>
+            <td style="width: 7rem">{{ form.minimum_confirmed }}</td>
+            <td style="width: 8rem">{{ form.guests_per_person }}</td>
+            <td style="width: 7rem">{{ form.stretch_guests }}</td>
+            <td style="width: 7rem">{{ form.maximum_confirmed }}</td>
+            <td style="width: 7rem">{{ form.on_call_base }}</td>
+            <td style="width: 9rem">{{ form.on_call_steps }}</td>
+            <td class="small text-secondary">
+              {{ row.describe|capfirst }}
+              {% for field in form %}{% for error in field.errors %}<div class="errorlist">{{ error }}</div>{% endfor %}{% endfor %}
+              {% for error in form.non_field_errors %}<div class="errorlist">{{ error }}</div>{% endfor %}
+            </td>
+          </tr>
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table></div>
+    <button class="btn btn-primary" type="submit">Save crew rules</button>
+  </form>
+</div></section>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <section class="card h-100" aria-labelledby="h-ladder"><div class="card-body">
+      <h2 class="h5 mb-1" id="h-ladder">What the rules give</h2>
+      <p class="text-secondary small mb-3">Worked out from the saved rules, {{ minimum_guests }}&ndash;{{ capacity }} guests. Each row is a range of guest counts that gets the same crew; numbers read confirmed + on call.</p>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th scope="col">Guests</th>{% for name in role_names %}<th scope="col">{{ name }}</th>{% endfor %}<th scope="col" class="text-end">People</th></tr></thead>
+        <tbody>
+          {% for band in ladder %}
+            <tr>
+              <td class="font-monospace text-nowrap"><a href="?guests={{ band.low }}#try">{{ band.low }}{% if band.high != band.low %}&ndash;{{ band.high }}{% endif %}</a></td>
+              {% for cell in band.cells %}<td class="font-monospace">{{ cell.confirmed }}{% if cell.on_call %} <span class="text-secondary">+ {{ cell.on_call }}</span>{% endif %}</td>{% endfor %}
+              <td class="font-monospace text-end fw-semibold">{{ band.people }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+    </div></section>
+  </div>
+  <div class="col-lg-5">
+    <section class="card h-100" id="try" aria-labelledby="h-try"><div class="card-body">
+      <h2 class="h5 mb-1" id="h-try">Try a guest count</h2>
+      <form method="get" action="#try" class="d-flex gap-2 align-items-end mb-3">
+        <div><label class="form-label small fw-semibold mb-1" for="try-guests">Guests</label>
+        <input class="form-control font-monospace" id="try-guests" type="number" name="guests" min="{{ minimum_guests }}" max="{{ capacity }}" value="{{ guests }}" style="width: 7rem"></div>
+        <button class="btn btn-outline-primary" type="submit">Show crew</button>
+      </form>
+      <p class="small text-secondary mb-2">Crew for {{ guests }} guests on a 6:30 pm show:</p>
+      <ul class="list-unstyled mb-0">
+        {% for person in crew %}
+          <li class="d-flex justify-content-between gap-3 py-1 border-top small">
+            <span>{% if person.missing %}<span class="text-danger">{{ person.name }}</span>{% else %}<strong>{{ person.name }}</strong>{% if person.on_call %} <span class="badge text-bg-warning">on call</span>{% endif %}{% endif %}</span>
+            <span class="clock">{% if person.start %}{{ person.start|time:"H:i" }}&ndash;{{ person.end|time:"H:i" }}{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div></section>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  {% for table in timetables %}
+    <div class="col-lg-6">
+      <section class="card h-100" id="times-{{ table.key }}" aria-labelledby="h-times-{{ table.key }}"><div class="card-body">
+        <h2 class="h5 mb-1" id="h-times-{{ table.key }}">Call times &middot; {{ table.label }}</h2>
+        <p class="text-secondary small mb-3">{% if table.key == "REGULAR" %}Every show with doors at 6:30 pm. The Server Manager is in for every show unless she has approved time off.{% else %}Doors 6:00 pm, matched on the show title.{% endif %} Shows on other times work theirs out from the show&rsquo;s own start and finish.</p>
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="times">
+          <input type="hidden" name="timetable" value="{{ table.key }}">
+          {{ table.formset.management_form }}
+          <div class="table-responsive"><table class="table table-sm align-middle mb-3">
+            <thead><tr><th scope="col">Position</th><th scope="col">In</th><th scope="col">Out</th></tr></thead>
+            <tbody>
+              {% for form, position in table.rows %}
+                <tr{% if form.errors %} class="table-danger"{% endif %}>
+                  <td>{{ form.id }}<span class="fw-semibold">{{ position.name }}</span>{% if position.assignment_type == "ON_CALL" %} <span class="badge text-bg-light">on call</span>{% endif %}
+                    {% for field in form %}{% for error in field.errors %}<div class="errorlist small">{{ error }}</div>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<div class="errorlist small">{{ error }}</div>{% endfor %}</td>
+                  <td style="width: 8rem"><label class="visually-hidden" for="{{ form.start_time.id_for_label }}">{{ position.name }} in</label>{{ form.start_time }}</td>
+                  <td style="width: 8rem"><label class="visually-hidden" for="{{ form.end_time.id_for_label }}">{{ position.name }} out</label>{{ form.end_time }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="3" class="text-secondary">No positions yet. Run the setup, or reset to defaults.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table></div>
+          <button class="btn btn-primary" type="submit">Save call times</button>
+        </form>
+      </div></section>
+    </div>
+  {% endfor %}
+</div>
+
+<section class="card" aria-labelledby="h-log"><div class="card-body">
+  <h2 class="h5 mb-1" id="h-log">Changes</h2>
+  <p class="text-secondary small mb-2">Every save on this page: who, when, and what changed.</p>
+  {% for change in changes %}
+    <div class="py-2 border-top small"><span class="text-secondary">{{ change.changed_at|date:"j M Y, H:i" }} &middot; {{ change.changed_by.get_username|default:"system" }}</span><div>{{ change.summary }}</div></div>
+  {% empty %}
+    <p class="small text-secondary border-top pt-2 mb-0">No changes yet &mdash; these are the Spirit defaults.</p>
+  {% endfor %}
+</div></section>
+{% endblock %}

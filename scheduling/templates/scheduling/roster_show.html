@@ -83,7 +83,7 @@
       <p class="fw-bold fs-5 mb-1">{{ profile.label }}</p>
       {% if profile.staffed %}
         <p class="text-secondary small mb-1">{{ profile.explanation }}</p>
-        <p class="text-secondary small mb-3">Call times: {{ profile.timetable }}.</p>
+        <p class="text-secondary small mb-3">Call times: {{ profile.timetable }}. <a href="{% url 'staffing_rules' %}">Change the staffing rules</a></p>
         {% if over_capacity %}<div class="alert alert-warning">More guests than seats: the largest crew is used and the roster will ask for management review.</div>{% endif %}
         <div class="table-responsive"><table class="table table-sm align-middle mb-0">
           <thead><tr><th scope="col">Position</th><th scope="col">Confirmed</th><th scope="col">On call</th></tr></thead>
