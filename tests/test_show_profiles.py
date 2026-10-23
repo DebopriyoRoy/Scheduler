@@ -9,6 +9,9 @@ from scheduling.services.show_profiles import ProfileKey, profile_for
 
 DAY = date(2026, 11, 20)
 
+# The rule description reads the live staffing rules.
+pytestmark = pytest.mark.django_db
+
 
 def _show(title, guests=150, start=time(18, 30), end=time(22, 30), venue="Theatre Gower"):
     return Show(

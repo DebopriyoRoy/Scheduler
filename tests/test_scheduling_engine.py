@@ -111,8 +111,10 @@ def test_staffing_scales_by_the_coverage_ratios(configured_staff):
     is called in for the sake of five more covers.
     """
     expected = {
-        30: (1, 1, 1),   # a block covers its ratio plus the five-guest buffer
-        31: (2, 1, 1),
+        # Servers never drop below the rule's minimum of 3 - the floor the engine
+        # already enforced, now a visible, editable rule. (Shows under 75 don't run.)
+        30: (3, 1, 1),
+        31: (3, 1, 1),
         80: (3, 1, 1),   # the standing crew: buffer at the top of the 75-guest block
         81: (4, 2, 1),
         105: (4, 2, 1),
