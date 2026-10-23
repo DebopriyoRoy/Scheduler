@@ -996,6 +996,12 @@ def _schedule_rows(schedule_run: ScheduleRun) -> list[dict]:
         }
         row = {"show": show, "warnings": list(schedule_run.warnings.filter(show=show))}
         row.update({code.replace("-", "_"): assignments.get(code) for code in codes})
+        # A bigger house adds positions beyond the nine standard columns - Server 4+,
+        # Bartender 2+, more on call. They were booked but never shown here.
+        row["extra"] = sorted(
+            (item for code, item in assignments.items() if code not in codes),
+            key=lambda item: item.shift_template.position_order,
+        )
         rows.append(row)
     return rows
 

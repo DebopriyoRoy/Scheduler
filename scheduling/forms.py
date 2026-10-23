@@ -229,3 +229,58 @@ class TimeOffForm(forms.ModelForm):
         )
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control form-control-sm")
+
+
+FLOOR_ROLE_NAMES = ("Server Manager", "Server", "Bartender", "Busser", "50/50")
+
+
+def floor_staff():
+    """Everyone who can be rostered on the floor or bar, in display order."""
+    return (
+        Employee.objects.filter(
+            active=True,
+            employee_roles__active=True,
+            employee_roles__role__name__in=FLOOR_ROLE_NAMES,
+        )
+        .distinct()
+        .order_by("display_name")
+    )
+
+
+class GuestCountForm(forms.Form):
+    expected_guests = forms.IntegerField(
+        min_value=0,
+        max_value=400,
+        label="Guests",
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-lg font-monospace"}),
+    )
+
+
+class AvailabilityOverrideForm(forms.Form):
+    employee = forms.ModelChoiceField(queryset=Employee.objects.none(), label="Staff")
+    change = forms.ChoiceField(
+        choices=(
+            ("ADD", "Add availability"),
+            ("REMOVE", "Mark unavailable"),
+        ),
+        widget=forms.RadioSelect,
+        initial="ADD",
+        label="Change",
+    )
+    start_time = forms.TimeField(
+        required=False, widget=TimeInput(), label="From", help_text="Leave both empty for all day."
+    )
+    end_time = forms.TimeField(required=False, widget=TimeInput(), label="To")
+    reason = forms.CharField(
+        max_length=300,
+        min_length=5,
+        label="Reason",
+        widget=forms.TextInput(attrs={"placeholder": "e.g. Swapped with Megan"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["employee"].queryset = floor_staff()
+        for name, field in self.fields.items():
+            if name != "change":
+                field.widget.attrs.setdefault("class", "form-control")

@@ -1,0 +1,176 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Who&rsquo;s available &middot; {{ show.date|date:"j M" }} | Spirit Scheduling Agent{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">{{ show.date|date:"D j M Y" }} &middot; {{ show.title }} &middot; {{ show.planning_guest_count }} guests</p>
+    <h1 class="h2 mb-1">Who&rsquo;s available</h1>
+    <p class="text-secondary mb-0">Square&rsquo;s availability and time off, with manual changes on top. A Square refresh never overwrites a manual change.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'roster_new' %}?show={{ show.pk }}&amp;from={{ show.date|date:'Y-m-d' }}">Back</a>
+    <a class="btn btn-primary" href="#build">Next: build the roster &darr;</a>
+  </div>
+</div>
+
+{% include "scheduling/_roster_steps.html" %}
+
+<section class="card" aria-label="How current the Square data is"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+  <span class="d-flex align-items-center gap-2">
+    <span class="status-dot {% if freshness.stale %}is-warn{% else %}status-connected{% endif %}"></span>
+    <span><strong>Square availability</strong> <span class="text-secondary">{{ freshness.age_text }}{% if freshness.run %} &middot; {{ freshness.run.completeness_percentage }}% complete{% endif %}</span></span>
+  </span>
+  <span class="ms-lg-auto text-secondary small">Over 24 hours old blocks the build unless you choose otherwise</span>
+  <a class="btn btn-sm btn-outline-primary" href="{% url 'square_pull' %}">Refresh from Square</a>
+</div></section>
+
+{% for override in conflicts %}
+  <div class="alert alert-danger mt-3 d-flex flex-wrap justify-content-between align-items-center gap-3" role="alert">
+    <div>
+      <strong class="d-block">A manual change disagrees with newer Square data</strong>
+      {{ override.employee.display_name }} was marked available on {{ override.created_at|date:"j M" }}{% if override.created_by %} by {{ override.created_by.get_username }}{% endif %} (&ldquo;{{ override.reason }}&rdquo;). Square now has approved time off for {{ show.date|date:"j M" }}. Until you choose, the time off applies.
+    </div>
+    <div class="d-flex gap-2">
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="keep"><input type="hidden" name="override_id" value="{{ override.pk }}"><button class="btn btn-sm btn-outline-secondary" type="submit">Keep my change</button></form>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="use_square"><input type="hidden" name="override_id" value="{{ override.pk }}"><button class="btn btn-sm btn-danger" type="submit">Use Square&rsquo;s time off</button></form>
+    </div>
+  </div>
+{% endfor %}
+
+<div class="row g-3 my-2">
+  {% for label, value, tone in tiles %}
+    <div class="col-6 col-md"><div class="card roster-tile h-100">
+      <div class="small text-secondary fw-semibold"><span class="eff eff-{{ tone }}" style="padding: 0; width: .65rem; height: .65rem; vertical-align: -1px; margin-right: .35rem"></span>{{ label }}</div>
+      <div class="value">{{ value }}</div>
+    </div></div>
+  {% endfor %}
+</div>
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3" role="group" aria-label="Filter by role">
+  {% for chip in role_filters %}
+    <a class="filter-chip{% if chip.on %} is-on{% endif %}" href="?role={{ chip.key|urlencode }}"{% if chip.on %} aria-current="true"{% endif %}>{{ chip.label }}</a>
+  {% endfor %}
+  <span class="ms-auto small text-secondary">Showing {{ rows|length }} of {{ total_staff }} floor and bar staff</span>
+</div>
+
+<div class="card"><div class="table-responsive">
+  <table class="table align-top mb-0" style="min-width: 1040px">
+    <thead><tr>
+      <th scope="col">Staff</th><th scope="col">Roles</th><th scope="col">Square availability</th><th scope="col">Time off</th><th scope="col">Manual change</th><th scope="col">For this date</th><th scope="col"><span class="visually-hidden">Actions</span></th>
+    </tr></thead>
+    <tbody>
+      {% for row in rows %}
+        <tr{% if row.conflict %} class="is-conflict"{% endif %}>
+          <td><strong>{{ row.employee.display_name }}</strong></td>
+          <td><div class="d-flex flex-wrap gap-1">{% for role in row.roles %}<span class="badge {{ role.css }}">{{ role.name }}</span>{% endfor %}</div></td>
+          <td><span class="clock">{{ row.square }}</span>{% if row.other_entries %}<div class="small text-secondary">Also entered here: {{ row.other_entries }}</div>{% endif %}</td>
+          <td>{% for entry in row.time_off %}<span class="badge text-bg-{{ entry.tone }}">{{ entry.status }} &middot; {{ entry.span }}</span>{% if entry.source != "Square" %}<div class="small text-secondary">{{ entry.source }}</div>{% endif %}{% empty %}<span class="text-secondary">&mdash;</span>{% endfor %}</td>
+          <td style="max-width: 15rem">
+            {% if row.override %}
+              <span class="eff eff-manual">{{ row.override.describe }}</span>
+              <div class="small">&ldquo;{{ row.override.reason }}&rdquo;</div>
+              <div class="small text-secondary">{{ row.override.created_by.get_username|default:"system" }} &middot; {{ row.override.created_at|date:"j M, H:i" }}</div>
+            {% else %}<span class="text-secondary">&mdash;</span>{% endif %}
+          </td>
+          <td><span class="eff eff-{{ row.effective_tone }}">{{ row.effective }}</span>{% if row.effective_note %}<div class="small text-secondary mt-1">{{ row.effective_note }}</div>{% endif %}</td>
+          <td class="text-end">
+            {% if row.override %}
+              <form method="post">{% csrf_token %}<input type="hidden" name="action" value="retire"><input type="hidden" name="override_id" value="{{ row.override.pk }}"><button class="btn btn-sm btn-outline-secondary text-nowrap" type="submit" aria-label="Undo the manual change for {{ row.employee.display_name }}">Undo change</button></form>
+            {% else %}
+              <a class="btn btn-sm btn-outline-primary text-nowrap" href="?role={{ role_filter|urlencode }}&amp;employee={{ row.employee.pk }}#add-change" aria-label="Change availability for {{ row.employee.display_name }}">Change</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="text-secondary">Nobody holds that role.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+
+<div class="row g-4 mt-1">
+  <div class="col-lg-6">
+    <section class="card h-100" id="add-change" aria-labelledby="h-add"><div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h2 class="h5 mb-0" id="h-add">Add a manual change</h2>
+        <span class="badge role-bartender">Kept separately from Square</span>
+      </div>
+      <p class="text-secondary small mt-1 mb-3">For what Square doesn&rsquo;t know yet: a swap agreed at the bar, a call-in, a training day. Applies to {{ show.date|date:"D j M" }}.</p>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add">
+        {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="{{ form.employee.id_for_label }}">{{ form.employee.label }}</label>
+          {{ form.employee }}
+          {% if form.employee.errors %}<div class="errorlist small">{{ form.employee.errors|join:" " }}</div>{% endif %}
+        </div>
+        <fieldset class="mb-3">
+          <legend class="form-label fw-semibold fs-6">{{ form.change.label }}</legend>
+          <div class="d-flex flex-wrap gap-3">
+            {% for radio in form.change %}<label class="d-flex align-items-center gap-2">{{ radio.tag }} {{ radio.choice_label }}</label>{% endfor %}
+          </div>
+        </fieldset>
+        <div class="row g-3 mb-1">
+          <div class="col-6"><label class="form-label fw-semibold" for="{{ form.start_time.id_for_label }}">From</label>{{ form.start_time }}</div>
+          <div class="col-6"><label class="form-label fw-semibold" for="{{ form.end_time.id_for_label }}">To</label>{{ form.end_time }}</div>
+        </div>
+        <p class="form-help mb-3">For availability only. Leave both empty for all day. Marking someone unavailable always covers the whole day.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="{{ form.reason.id_for_label }}">Reason <span class="text-secondary fw-normal">(required, kept in the log)</span></label>
+          {{ form.reason }}
+          {% if form.reason.errors %}<div class="errorlist small">{{ form.reason.errors|join:" " }}</div>{% endif %}
+        </div>
+        <button class="btn btn-primary" type="submit">Save change</button>
+      </form>
+    </div></section>
+  </div>
+  <div class="col-lg-6">
+    <section class="card h-100" aria-labelledby="h-log"><div class="card-body">
+      <h2 class="h5 mb-1" id="h-log">Changes for {{ show.date|date:"D j M" }}</h2>
+      <p class="text-secondary small mb-2">Every manual change, who made it and why, including ones no longer in force.</p>
+      {% for entry in log %}
+        <div class="d-flex gap-3 py-2 border-top">
+          <div class="flex-grow-1">
+            <div class="small"><strong>{{ entry.employee.display_name }}</strong> &middot; {{ entry.describe|lower }}</div>
+            <div class="small">&ldquo;{{ entry.reason }}&rdquo;</div>
+            <div class="small text-secondary">{{ entry.created_by.get_username|default:"system" }} &middot; {{ entry.created_at|date:"j M, H:i" }}{% if entry.retired_at %} &middot; ended {{ entry.retired_at|date:"j M, H:i" }}{% if entry.retired_reason %}: {{ entry.retired_reason }}{% endif %}{% endif %}{% if entry.conflict_kept_at %} &middot; kept over Square {{ entry.conflict_kept_at|date:"j M, H:i" }}{% endif %}</div>
+          </div>
+          <span class="align-self-start">
+            {% if entry.in_conflict %}<span class="eff eff-danger">Conflict</span>{% elif entry.active %}<span class="eff eff-manual">In force</span>{% else %}<span class="eff eff-muted">Ended</span>{% endif %}
+          </span>
+        </div>
+      {% empty %}
+        <p class="text-secondary small border-top pt-2 mb-0">No manual changes for this date.</p>
+      {% endfor %}
+    </div></section>
+  </div>
+</div>
+
+<section class="card mt-4" id="build" aria-labelledby="h-build"><div class="card-body">
+  <h2 class="h5 mb-1" id="h-build">Build the roster</h2>
+  <p class="text-secondary small mb-3">
+    {% if profile.staffed %}Staffed as <strong>{{ profile.label|lower }}</strong>.{% else %}<strong>{{ profile.label }}</strong> &mdash; {{ profile.explanation }}{% endif %}
+    {% if same_day_shows|length > 1 %}The roster covers all {{ same_day_shows|length }} shows on {{ show.date|date:"j M" }} ({% for s in same_day_shows %}{{ s.title }}{% if not forloop.last %}, {% endif %}{% endfor %}), so nobody is booked twice.{% endif %}
+    You review, replace and approve it on the next page; nothing goes to Square until you send it.
+  </p>
+  <form method="post" class="d-flex flex-column gap-2">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="generate">
+    {% if freshness.stale %}
+      <label class="d-flex gap-2 align-items-start small"><input type="checkbox" name="use_stale" class="mt-1"> Build from availability {{ freshness.age_text }} anyway. This is noted on the roster.</label>
+    {% endif %}
+    {% if unknown_count %}
+      <label class="d-flex gap-2 align-items-start small"><input type="checkbox" name="allow_unknown" class="mt-1"> Build anyway &mdash; {{ unknown_count }} {{ unknown_count|pluralize:"person has,people have" }} nothing on file for this date and will stay off the roster.</label>
+    {% endif %}
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
+      {% if conflicts %}
+        <button class="btn btn-primary" type="submit" disabled>Build roster</button>
+        <span class="small text-danger">Settle the conflict above first.</span>
+      {% else %}
+        <button class="btn btn-primary" type="submit">Build roster</button>
+      {% endif %}
+    </div>
+  </form>
+</div></section>
+{% endblock %}

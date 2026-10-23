@@ -1,0 +1,137 @@
+{% extends "scheduling/base.html" %}
+{% block title %}Build a roster | Spirit Scheduling Agent{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3">
+  <div>
+    <p class="text-uppercase text-primary fw-semibold small mb-1">Schedules &middot; New roster</p>
+    <h1 class="h2 mb-1">Build a roster for one show</h1>
+    <p class="text-secondary mb-0">Pick the show and confirm the guest count. The staffing rules are chosen for you; the next step shows who is free.</p>
+  </div>
+  {% if selected %}
+    <a class="btn btn-primary" href="{% url 'roster_availability' selected.pk %}">Next: who&rsquo;s available &rarr;</a>
+  {% endif %}
+</div>
+
+{% include "scheduling/_roster_steps.html" %}
+
+<div class="row g-4">
+  <div class="col-lg-8 d-flex flex-column gap-4">
+
+    <section class="card" aria-labelledby="h-show"><div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+        <h2 class="h5 mb-0" id="h-show">1 &middot; Show</h2>
+        <span class="badge text-bg-light">From the show calendar</span>
+      </div>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <p class="text-secondary small mb-0">{{ range_start|date:"D j M" }} &ndash; {{ range_end|date:"D j M Y" }}</p>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-outline-secondary" href="?from={{ previous_from|date:'Y-m-d' }}">&larr; Earlier</a>
+          <a class="btn btn-sm btn-outline-secondary" href="?from={{ next_from|date:'Y-m-d' }}">Later &rarr;</a>
+        </div>
+      </div>
+      {% if shows %}
+        <div class="d-flex flex-column gap-2">
+          {% for show in shows %}
+            <a class="show-pick{% if show.is_selected %} is-selected{% endif %}" href="?from={{ range_start|date:'Y-m-d' }}&amp;show={{ show.pk }}"{% if show.is_selected %} aria-current="true"{% endif %}>
+              <span class="when">{{ show.date|date:"D j M" }}</span>
+              <span>
+                <strong class="d-block">{{ show.title }}</strong>
+                <span class="text-secondary small">{{ show.profile.label }} &middot; <span class="clock">{{ show.start_time|time:"H:i" }}</span></span>
+              </span>
+              <span class="badge text-bg-light"><span class="font-monospace">{{ show.planning_guest_count }}</span> guests{% if show.uses_default_guest_count %} (planned){% endif %}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-info mb-0">No shows in these two weeks. <a href="{% url 'show_list' %}">Import or add shows</a> on the Show Calendar.</div>
+      {% endif %}
+    </div></section>
+
+    {% if selected %}
+    <section class="card" aria-labelledby="h-guests"><div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="h5 mb-0" id="h-guests">2 &middot; Guest count</h2>
+        <span class="badge text-bg-light">You can change it</span>
+      </div>
+      <div class="row g-4 align-items-center">
+        <div class="col-md-5">
+          <form method="post" action="{% url 'roster_guests' selected.pk %}" class="d-flex gap-2 align-items-end">
+            {% csrf_token %}
+            <div class="flex-grow-1">
+              <label class="form-label fw-semibold" for="id_expected_guests">Guests for {{ selected.date|date:"D j M" }}</label>
+              {{ guest_form.expected_guests }}
+            </div>
+            <button class="btn btn-outline-primary" type="submit">Save</button>
+          </form>
+        </div>
+        <div class="col-md-7">
+          <div class="d-flex justify-content-between small mb-1"><span class="text-secondary">Seats used</span><span class="font-monospace fw-semibold">{{ selected.planning_guest_count }} / 175</span></div>
+          <div class="seat-meter" role="img" aria-label="{{ selected.planning_guest_count }} of 175 seats"><span style="width: {{ seat_percent }}%"></span></div>
+          <p class="text-secondary small mt-2 mb-0">
+            {% if selected.uses_default_guest_count %}No count on the calendar yet, so this is planned at the 80-guest buffer.{% else %}From the show calendar.{% endif %}
+            Capacity 165 + 10 buffer. A change is noted on the show with who made it.
+          </p>
+        </div>
+      </div>
+    </div></section>
+
+    <section class="card" aria-labelledby="h-rules"><div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+        <h2 class="h5 mb-0" id="h-rules">3 &middot; Staffing rules</h2>
+        <span class="badge text-bg-success">Chosen automatically</span>
+      </div>
+      <p class="fw-bold fs-5 mb-1">{{ profile.label }}</p>
+      {% if profile.staffed %}
+        <p class="text-secondary small mb-1">{{ profile.explanation }}</p>
+        <p class="text-secondary small mb-3">Call times: {{ profile.timetable }}. <a href="{% url 'staffing_rules' %}">Change the staffing rules</a></p>
+        {% if over_capacity %}<div class="alert alert-warning">More guests than seats: the largest crew is used and the roster will ask for management review.</div>{% endif %}
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th scope="col">Position</th><th scope="col">Confirmed</th><th scope="col">On call</th></tr></thead>
+          <tbody>
+            {% for req in requirements %}
+              <tr><td><span class="badge {{ req.css }}">{{ req.role }}</span></td><td class="font-monospace fw-semibold">{{ req.confirmed }}</td><td class="font-monospace">{{ req.on_call|default:"—" }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table></div>
+      {% else %}
+        <div class="alert alert-warning mb-0">{{ profile.explanation }}</div>
+      {% endif %}
+    </div></section>
+    {% endif %}
+  </div>
+
+  {% if selected %}
+  <aside class="col-lg-4 d-flex flex-column gap-4">
+    <section class="card roster-summary" aria-labelledby="h-summary"><div class="card-body">
+      <p class="text-uppercase fw-semibold small mb-1" style="color: var(--spot)">This roster</p>
+      <h2 class="h4 mb-1" id="h-summary">{{ selected.title }}</h2>
+      <p class="font-monospace small muted mb-3">{{ selected.date|date:"D j M Y" }} &middot; {{ selected.start_time|time:"H:i" }}</p>
+      <div class="row g-2">
+        <div class="col-6"><div class="stat"><div class="small muted">Guests</div><div class="font-monospace fs-4 fw-semibold">{{ selected.planning_guest_count }}</div></div></div>
+        <div class="col-6"><div class="stat"><div class="small muted">Positions</div><div class="font-monospace fs-4 fw-semibold">{{ positions }}</div></div></div>
+      </div>
+      {% if same_day_shows|length > 1 %}
+        <p class="small muted mt-3 mb-0">{{ same_day_shows|length }} shows on this date. The roster covers all of them, so nobody is booked twice.</p>
+      {% endif %}
+    </div></section>
+
+    <section class="card" aria-labelledby="h-ready"><div class="card-body">
+      <h2 class="h6 mb-2" id="h-ready">Ready for step 4?</h2>
+      <div class="ready-item">
+        <span class="status-dot {% if freshness.stale %}is-warn{% else %}status-connected{% endif %}"></span>
+        <div><strong class="small">Square availability</strong><div class="text-secondary small">{{ freshness.age_text|capfirst }}{% if freshness.stale %} &mdash; older than 24 hours{% endif %}</div></div>
+      </div>
+      <div class="ready-item">
+        <span class="status-dot{% if approved_time_off_count %} is-warn{% else %} status-connected{% endif %}"></span>
+        <div><strong class="small">Approved time off</strong><div class="text-secondary small">{{ approved_time_off_count }} {{ approved_time_off_count|pluralize:"person,people" }} off on {{ selected.date|date:"j M" }}</div></div>
+      </div>
+      <div class="ready-item">
+        <span class="status-dot {% if conflicts %}is-bad{% else %}is-manual{% endif %}"></span>
+        <div><strong class="small">Manual changes</strong><div class="text-secondary small">{{ override_count }} for this date{% if conflicts %} &middot; {{ conflicts|length }} disagree{{ conflicts|length|pluralize:"s," }} with newer Square time off{% endif %}</div></div>
+      </div>
+      <a class="btn btn-primary w-100 mt-2" href="{% url 'roster_availability' selected.pk %}">Next: who&rsquo;s available</a>
+    </div></section>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

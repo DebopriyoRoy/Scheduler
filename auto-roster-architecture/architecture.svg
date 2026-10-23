@@ -1,0 +1,251 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1120" width="1600" height="1120" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3c4043"/>
+    </marker>
+    <marker id="arrY" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b58900"/>
+    </marker>
+    <style>
+      .title { font-size: 26px; font-weight: 700; fill: #1f2328; }
+      .sub { font-size: 14px; fill: #57606a; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .h { font-size: 15px; font-weight: 700; fill: #1f2328; }
+      .t { font-size: 12.5px; fill: #30363d; }
+      .note { font-size: 12px; fill: #57606a; font-style: italic; }
+      .colh { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; fill: #8a6d00; }
+      .ptitle { font-size: 16px; font-weight: 700; fill: #1f2328; }
+      .ptext { font-size: 13px; fill: #30363d; }
+      .lbl { font-size: 11.5px; fill: #57606a; }
+      .man { fill: #e8f0fe; stroke: #3b6fd8; stroke-width: 2; }
+      .auto { fill: #e6f4ea; stroke: #2e8b57; stroke-width: 2; }
+      .mix { fill: #fff4c2; stroke: #d4a800; stroke-width: 2.5; }
+      .sq { fill: #f1f3f4; stroke: #3c4043; stroke-width: 2; }
+      .ovr { fill: #fff4c2; stroke: #d4a800; stroke-width: 2; }
+      .fut { fill: #ffffff; stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .plat { fill: #f6f8fa; stroke: #8c959f; stroke-width: 1.5; }
+      .line { stroke: #3c4043; stroke-width: 1.8; fill: none; }
+      .lineY { stroke: #b58900; stroke-width: 2.2; fill: none; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="1120" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="45" y="48" class="title">Spirit Auto-Roster — Architecture &amp; Design Flow</text>
+  <text x="45" y="74" class="sub">From the whiteboard sketch: pick a show, enter guests, let the system choose the staffing algorithm, read who is free, build the roster, keep manual control at both ends.</text>
+
+  <!-- ===== Row 1: main pipeline ===== -->
+  <!-- 1 -->
+  <rect x="45" y="105" width="190" height="175" rx="10" class="man"/>
+  <text x="60" y="128" class="tag" fill="#3b6fd8">1 · MANUAL</text>
+  <text x="60" y="152" class="h">Select show</text>
+  <text x="60" y="176" class="t">Show date + show type</text>
+  <text x="60" y="194" class="t">picked from the live</text>
+  <text x="60" y="212" class="t">show calendar</text>
+  <text x="60" y="238" class="t">Typing allowed for</text>
+  <text x="60" y="256" class="t">private events</text>
+
+  <!-- 2 -->
+  <rect x="265" y="105" width="190" height="175" rx="10" class="man"/>
+  <text x="280" y="128" class="tag" fill="#3b6fd8">2 · MANUAL</text>
+  <text x="280" y="152" class="h">Guest count</text>
+  <text x="280" y="176" class="t">Pre-filled from the</text>
+  <text x="280" y="194" class="t">Back Office bookings</text>
+  <text x="280" y="212" class="t">Staff can edit before</text>
+  <text x="280" y="230" class="t">running</text>
+  <text x="280" y="256" class="t">Blank → plan at 80</text>
+
+  <!-- 3 -->
+  <rect x="485" y="105" width="190" height="175" rx="10" class="auto"/>
+  <text x="500" y="128" class="tag" fill="#2e8b57">3 · AUTOMATED</text>
+  <text x="500" y="152" class="h">Pick the algorithm</text>
+  <text x="500" y="176" class="t">Rule set chosen by</text>
+  <text x="500" y="194" class="t">show type + guests:</text>
+  <text x="500" y="212" class="t">dinner · lunch ·</text>
+  <text x="500" y="230" class="t">Christmas · private</text>
+  <text x="500" y="256" class="t">Under 75 → flag only</text>
+
+  <!-- 4 (highlighted) -->
+  <rect x="705" y="105" width="190" height="175" rx="10" class="mix"/>
+  <text x="720" y="128" class="tag" fill="#8a6d00">4 · AUTO + MANUAL</text>
+  <text x="720" y="152" class="h">Who's available</text>
+  <text x="720" y="176" class="t">Square availability</text>
+  <text x="720" y="194" class="t">+ Square time off</text>
+  <text x="720" y="212" class="t">± manual add / delete</text>
+  <text x="720" y="256" class="t" font-weight="700">See panel below ↓</text>
+
+  <!-- 5 -->
+  <rect x="925" y="105" width="190" height="175" rx="10" class="auto"/>
+  <text x="940" y="128" class="tag" fill="#2e8b57">5 · AUTOMATED</text>
+  <text x="940" y="152" class="h">Roster engine</text>
+  <text x="940" y="176" class="t">Demand ladder →</text>
+  <text x="940" y="194" class="t">eligibility → scarce</text>
+  <text x="940" y="212" class="t">skills → fairness</text>
+  <text x="940" y="238" class="t">→ confirmed + on-call</text>
+  <text x="940" y="256" class="t">+ warnings</text>
+
+  <!-- 6 -->
+  <rect x="1145" y="105" width="190" height="175" rx="10" class="man"/>
+  <text x="1160" y="128" class="tag" fill="#3b6fd8">6 · MANUAL</text>
+  <text x="1160" y="152" class="h">Review roster</text>
+  <text x="1160" y="176" class="t">Add / delete people</text>
+  <text x="1160" y="194" class="t">with a reason</text>
+  <text x="1160" y="212" class="t">(audited)</text>
+  <text x="1160" y="238" class="t">Warnings must clear</text>
+  <text x="1160" y="256" class="t">→ Approve</text>
+
+  <!-- 7 -->
+  <rect x="1365" y="105" width="190" height="175" rx="10" class="auto"/>
+  <text x="1380" y="128" class="tag" fill="#2e8b57">7 · AUTOMATED</text>
+  <text x="1380" y="152" class="h">Publish to Square</text>
+  <text x="1380" y="176" class="t">Labor API: create</text>
+  <text x="1380" y="194" class="t">draft shifts → bulk</text>
+  <text x="1380" y="212" class="t">publish</text>
+  <text x="1380" y="238" class="t">Staff notified in the</text>
+  <text x="1380" y="256" class="t">Square Team app</text>
+
+  <!-- pipeline arrows -->
+  <path d="M235,192 H263" class="line" marker-end="url(#arr)"/>
+  <path d="M455,192 H483" class="line" marker-end="url(#arr)"/>
+  <path d="M675,192 H703" class="line" marker-end="url(#arr)"/>
+  <path d="M895,192 H923" class="line" marker-end="url(#arr)"/>
+  <path d="M1115,192 H1143" class="line" marker-end="url(#arr)"/>
+  <path d="M1335,192 H1363" class="line" marker-end="url(#arr)"/>
+
+  <!-- ===== Row 2: the answer panel ===== -->
+  <rect x="45" y="330" width="1510" height="475" rx="14" fill="#fffbe6" stroke="#f2c200" stroke-width="2.5"/>
+  <text x="70" y="362" class="ptitle">The sketch’s question: “How do we get a better way to read the availability + time-off data? (It is in Square)”</text>
+  <text x="70" y="386" class="ptext">Answer: Square has no public API for either, so read them as structured data — the JSON the dashboard itself loads — key every record on Square IDs,</text>
+  <text x="70" y="404" class="ptext">use the official APIs for everything else, and keep manual add/delete in a separate layer a re-sync can never overwrite.</text>
+
+  <!-- column headers -->
+  <text x="70" y="432" class="colh">SQUARE (SOURCES)</text>
+  <text x="380" y="432" class="colh">READERS</text>
+  <text x="710" y="432" class="colh">STAGING</text>
+  <text x="1030" y="432" class="colh">MERGE</text>
+
+  <!-- A1 -->
+  <rect x="70" y="442" width="260" height="125" rx="8" class="sq"/>
+  <text x="85" y="466" class="h">Dashboard / Team app</text>
+  <text x="85" y="488" class="t">Availability grid</text>
+  <text x="85" y="506" class="t">Time off (pending,</text>
+  <text x="85" y="524" class="t">approved, declined)</text>
+  <text x="85" y="550" class="t" style="fill:#b3261e" font-weight="700">No public API (open request)</text>
+
+  <!-- A2 -->
+  <rect x="70" y="585" width="260" height="125" rx="8" class="sq"/>
+  <text x="85" y="609" class="h">Official Square APIs</text>
+  <text x="85" y="631" class="t">Team members · Jobs</text>
+  <text x="85" y="649" class="t">Scheduled shifts (read/write)</text>
+  <text x="85" y="667" class="t">Timecards (worked history)</text>
+  <text x="85" y="693" class="t">Stable, versioned, token auth</text>
+
+  <!-- B1 -->
+  <rect x="380" y="442" width="280" height="125" rx="8" class="auto"/>
+  <text x="395" y="466" class="h">Network-capture reader</text>
+  <text x="395" y="488" class="t">Headless browser + stored</text>
+  <text x="395" y="506" class="t">session; saves the JSON the</text>
+  <text x="395" y="524" class="t">page fetches, not the HTML</text>
+  <text x="395" y="550" class="t">Today's DOM scraper = fallback</text>
+
+  <!-- B2 -->
+  <rect x="380" y="585" width="280" height="125" rx="8" class="auto"/>
+  <text x="395" y="609" class="h">Official API client</text>
+  <text x="395" y="631" class="t">Read-only by default</text>
+  <text x="395" y="649" class="t">Pagination + retries</text>
+  <text x="395" y="667" class="t">Production writes gated</text>
+  <text x="395" y="685" class="t">behind approval (step 6)</text>
+
+  <text x="380" y="730" class="note">Runs nightly · before every roster run · on “Refresh”</text>
+
+  <!-- C1-C3 -->
+  <rect x="710" y="442" width="270" height="72" rx="8" class="auto"/>
+  <text x="725" y="466" class="h">Raw snapshot store</text>
+  <text x="725" y="490" class="t">JSON + hash + retrieved_at</text>
+
+  <rect x="710" y="534" width="270" height="78" rx="8" class="auto"/>
+  <text x="725" y="558" class="h">Normalizer</text>
+  <text x="725" y="580" class="t">Keyed on team_member_id —</text>
+  <text x="725" y="598" class="t">no more name matching</text>
+
+  <rect x="710" y="632" width="270" height="78" rx="8" class="auto"/>
+  <text x="725" y="656" class="h">Diff + alerts</text>
+  <text x="725" y="678" class="t">New time off for someone</text>
+  <text x="725" y="696" class="t">already rostered → alert</text>
+
+  <!-- D1 -->
+  <rect x="1030" y="442" width="230" height="165" rx="8" class="ovr"/>
+  <text x="1045" y="466" class="tag" fill="#8a6d00">MANUAL</text>
+  <text x="1045" y="488" class="h">Override layer</text>
+  <text x="1045" y="512" class="t">Add / delete availability</text>
+  <text x="1045" y="530" class="t">or time off</text>
+  <text x="1045" y="548" class="t">Who · when · why</text>
+  <text x="1045" y="574" class="t">Stored separately, so a</text>
+  <text x="1045" y="592" class="t">re-sync never wipes it</text>
+
+  <!-- D2 -->
+  <rect x="1300" y="442" width="230" height="165" rx="8" class="auto"/>
+  <text x="1315" y="466" class="tag" fill="#2e8b57">AUTOMATED</text>
+  <text x="1315" y="488" class="h">Effective availability</text>
+  <text x="1315" y="512" class="t">(Square − deletions)</text>
+  <text x="1315" y="530" class="t">+ manual additions</text>
+  <text x="1315" y="554" class="t">Override vs newer Square</text>
+  <text x="1315" y="572" class="t">data → conflict warning</text>
+  <text x="1315" y="594" class="t">Stale (&gt;24 h) → block run</text>
+
+  <!-- panel arrows -->
+  <path d="M330,505 H378" class="line" marker-end="url(#arr)"/>
+  <path d="M330,648 H378" class="line" marker-end="url(#arr)"/>
+  <path d="M660,505 L708,480" class="line" marker-end="url(#arr)"/>
+  <path d="M660,648 L708,575" class="line" marker-end="url(#arr)"/>
+  <text x="664" y="605" class="lbl">IDs</text>
+  <path d="M845,514 V532" class="line" marker-end="url(#arr)"/>
+  <path d="M845,612 V630" class="line" marker-end="url(#arr)"/>
+  <path d="M980,573 H1005 V628 H1415 V609" class="line" marker-end="url(#arr)"/>
+  <text x="1100" y="644" class="lbl">Square snapshot</text>
+  <path d="M1260,524 H1298" class="line" marker-end="url(#arr)"/>
+
+  <!-- effective availability back up to step 4 -->
+  <path d="M1530,524 H1578 V302 H800 V283" class="lineY" marker-end="url(#arrY)"/>
+  <text x="1120" y="318" class="lbl" fill="#8a6d00" font-weight="700">effective availability feeds step 4</text>
+
+  <!-- future box -->
+  <rect x="70" y="748" width="1460" height="44" rx="8" class="fut"/>
+  <text x="85" y="776" class="t"><tspan font-weight="700">Later options:</tspan>  (a) Spirit's own availability / time-off form → Spirit becomes the source of truth   ·   (b) Square ships an official endpoint → swap in the API provider (interface already exists)</text>
+
+  <!-- ===== Row 3: platform ===== -->
+  <rect x="45" y="840" width="490" height="160" rx="10" class="plat"/>
+  <text x="65" y="868" class="h">Platform</text>
+  <text x="65" y="894" class="t">• Existing Django Scheduler app (this repo)</text>
+  <text x="65" y="914" class="t">• PostgreSQL (SQLite for local dev)</text>
+  <text x="65" y="934" class="t">• Browser reader runs in its own worker process</text>
+  <text x="65" y="954" class="t">• Square session + tokens kept in .env, never in Git</text>
+  <text x="65" y="974" class="t">• Hosted on the office Mac mini or the VPS</text>
+
+  <rect x="555" y="840" width="490" height="160" rx="10" class="plat"/>
+  <text x="575" y="868" class="h">Audit &amp; outputs</text>
+  <text x="575" y="894" class="t">• Every manual add / delete logged with a reason</text>
+  <text x="575" y="914" class="t">• Sync runs: completeness %, unmatched staff, age</text>
+  <text x="575" y="934" class="t">• “Why someone is not scheduled” explanations</text>
+  <text x="575" y="954" class="t">• Excel / CSV / PDF roster exports</text>
+
+  <rect x="1065" y="840" width="490" height="160" rx="10" class="plat"/>
+  <text x="1085" y="868" class="h">Feedback loop</text>
+  <text x="1085" y="894" class="t">Published roster → staff clock in on Square →</text>
+  <text x="1085" y="914" class="t">Timecards API → fairness history →</text>
+  <text x="1085" y="934" class="t">the next roster spreads shifts more evenly</text>
+
+  <!-- Legend -->
+  <rect x="45" y="1040" width="22" height="16" rx="3" class="man"/>
+  <text x="75" y="1053" class="t">Manual step</text>
+  <rect x="190" y="1040" width="22" height="16" rx="3" class="auto"/>
+  <text x="220" y="1053" class="t">Automated</text>
+  <rect x="325" y="1040" width="22" height="16" rx="3" class="mix"/>
+  <text x="355" y="1053" class="t">Highlighted on the sketch (manual add/delete)</text>
+  <rect x="680" y="1040" width="22" height="16" rx="3" class="sq"/>
+  <text x="710" y="1053" class="t">Square</text>
+  <rect x="790" y="1040" width="22" height="16" rx="3" class="fut"/>
+  <text x="820" y="1053" class="t">Future option</text>
+  <text x="45" y="1095" class="note">Square availability / time off: no public endpoint as of Oct 2026 (open community feature request). Scheduled shifts, team members, jobs and timecards are official Square APIs.</text>
+</svg>

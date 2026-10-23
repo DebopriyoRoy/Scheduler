@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import roster_views, rules_views, views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -32,8 +32,20 @@ urlpatterns = [
         name="availability_comparison",
     ),
     path("configuration/rotations/", views.rotation_configuration, name="rotation_configuration"),
+    path("configuration/staffing/", rules_views.staffing_rules, name="staffing_rules"),
     path("schedules/", views.schedule_list, name="schedule_list"),
     path("schedules/generate/", views.schedule_generate, name="schedule_generate"),
+    path("schedules/new/", roster_views.roster_new, name="roster_new"),
+    path(
+        "schedules/new/<int:show_id>/guests/",
+        roster_views.roster_guests,
+        name="roster_guests",
+    ),
+    path(
+        "schedules/new/<int:show_id>/availability/",
+        roster_views.roster_availability,
+        name="roster_availability",
+    ),
     path("schedules/<int:run_id>/", views.schedule_detail, name="schedule_detail"),
     path("schedules/<int:run_id>/approve/", views.schedule_approve, name="schedule_approve"),
     path(

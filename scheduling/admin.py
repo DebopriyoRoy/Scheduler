@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AvailabilityOverride,
     Employee,
     EmployeeAvailability,
     EmployeeRole,
@@ -83,6 +84,13 @@ class EmployeeAvailabilityAdmin(admin.ModelAdmin):
     list_display = ("employee", "date", "availability_type", "start_time", "end_time", "source")
     list_filter = ("availability_type", "date", "source")
     search_fields = ("employee__display_name",)
+
+
+@admin.register(AvailabilityOverride)
+class AvailabilityOverrideAdmin(admin.ModelAdmin):
+    list_display = ("employee", "date", "action", "start_time", "end_time", "active", "created_by")
+    list_filter = ("action", "active", "date")
+    search_fields = ("employee__display_name", "reason")
 
 
 @admin.register(ScheduleRun)

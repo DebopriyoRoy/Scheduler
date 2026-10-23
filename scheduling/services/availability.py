@@ -3,7 +3,13 @@ from datetime import date, datetime, time, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from scheduling.models import AvailabilityType, Employee, EmployeeAvailability
+from scheduling.models import (
+    AvailabilityOverride,
+    AvailabilityType,
+    Employee,
+    EmployeeAvailability,
+    OverrideAction,
+)
 
 ST_JOHNS_TZ = ZoneInfo("America/St_Johns")
 
@@ -23,6 +29,47 @@ def _interval(day: date, start: time, end: time) -> tuple[datetime, datetime]:
     begin = datetime.combine(day, start, tzinfo=ST_JOHNS_TZ)
     finish_day = day + timedelta(days=1) if end <= start else day
     return begin, datetime.combine(finish_day, end, tzinfo=ST_JOHNS_TZ)
+
+
+def effective_entries(
+    employee: Employee, shift_date: date
+) -> tuple[list[EmployeeAvailability], AvailabilityOverride | None]:
+    """Availability rows for the date, with any manual override already applied.
+
+    A removal empties the list and is returned so the caller can say why. An addition
+    drops whatever said "no" or "unknown" and stands in as a row of its own, so the
+    rest of the logic - all-day beats windows, windows must cover the shift - applies
+    to it exactly as it does to a row Square wrote.
+    """
+    entries = list(EmployeeAvailability.objects.filter(employee=employee, date=shift_date))
+    override = AvailabilityOverride.objects.filter(
+        employee=employee, date=shift_date, active=True
+    ).first()
+    if override is None:
+        return entries, None
+    if override.action == OverrideAction.REMOVE:
+        return [], override
+    kept = [
+        entry
+        for entry in entries
+        if entry.availability_type
+        in {AvailabilityType.AVAILABLE_ALL_DAY, AvailabilityType.AVAILABLE_WINDOW}
+    ]
+    kept.append(
+        EmployeeAvailability(
+            employee=employee,
+            date=shift_date,
+            availability_type=(
+                AvailabilityType.AVAILABLE_ALL_DAY
+                if override.is_all_day
+                else AvailabilityType.AVAILABLE_WINDOW
+            ),
+            start_time=override.start_time,
+            end_time=override.end_time,
+            source="MANUAL_OVERRIDE",
+        )
+    )
+    return kept, override
 
 
 @dataclass(frozen=True)
@@ -87,7 +134,13 @@ class LocalAvailabilityProvider:
         start_time: time,
         end_time: time,
     ) -> AvailabilityResult:
-        entries = list(EmployeeAvailability.objects.filter(employee=employee, date=shift_date))
+        entries, override = effective_entries(employee, shift_date)
+        if override is not None and override.action == OverrideAction.REMOVE:
+            return AvailabilityResult(
+                False,
+                AvailabilityType.UNAVAILABLE,
+                (f"Marked unavailable here: {override.reason}",),
+            )
         if not entries:
             return AvailabilityResult(
                 False,
@@ -175,7 +228,7 @@ def _fit_local(
     date, marked unavailable, or an overlap too short to be worth the trip. An unknown
     is still a hard no - a blank record is not permission.
     """
-    entries = list(EmployeeAvailability.objects.filter(employee=employee, date=shift_date))
+    entries, _override = effective_entries(employee, shift_date)
     if not entries:
         return None
     if any(e.availability_type == AvailabilityType.UNAVAILABLE for e in entries):
