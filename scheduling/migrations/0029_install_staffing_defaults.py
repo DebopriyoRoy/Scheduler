@@ -23,7 +23,12 @@ def install(apps, schema_editor):
     CallTime = apps.get_model("scheduling", "CallTime")
 
     for order, name in enumerate(defaults.ROLE_ORDER):
-        role, _ = Role.objects.get_or_create(name=name)
+        # Only roles that already exist. A fresh database gets its roles - and with
+        # them these rules - from seed_scheduling_config; until then the engine uses
+        # the same defaults from code.
+        role = Role.objects.filter(name=name).first()
+        if role is None:
+            continue
         minimum, per, stretch, maximum, base, steps = defaults.ROLE_RULES[name]
         RoleStaffingRule.objects.get_or_create(
             role=role,

@@ -323,10 +323,17 @@ def test_the_nav_links_to_the_rules(configured, client_in):
 
 
 @pytest.mark.django_db
-def test_every_role_has_a_rule_after_migrating(db):
+def test_every_role_has_a_rule_after_setup(configured):
     names = set(RoleStaffingRule.objects.values_list("role__name", flat=True))
     assert {"Server Manager", "Server", "Bartender", "Busser", "50/50"} <= names
-    assert Role.objects.filter(name="Server").exists()
+
+
+@pytest.mark.django_db
+def test_without_stored_rules_the_defaults_apply(db):
+    """Before setup has run, the engine still sizes crews by the defaults."""
+    assert not RoleStaffingRule.objects.exists()
+    assert not Role.objects.exists()
+    assert _crew(80)["Server"] == (3, 1)
 
 
 @pytest.mark.django_db
